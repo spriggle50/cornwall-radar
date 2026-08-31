@@ -140,7 +140,11 @@
       transition: transform 0.15s, box-shadow 0.15s;
     }
     .hub-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
-    .hub-card-photo { width: 100%; height: 84px; object-fit: cover; display: block; }
+    /* aspect-ratio (not a fixed pixel height) so the photo keeps showing the
+       same proportion of the shot as the card resizes — a fixed height was
+       cropping down to a thin sliver (a bus's roof, a bird's wing) once the
+       grid had more room to work with. */
+    .hub-card-photo { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
     .hub-card-body { padding: 11px 13px 13px; }
     .hub-card-title { font-size: 0.86rem; font-weight: 700; color: var(--text); margin-bottom: 3px; letter-spacing: -0.01em; }
     .hub-card-preview { font-size: 0.75rem; color: var(--text-2); line-height: 1.35; }
@@ -178,8 +182,13 @@
     .bus-item .times { font-size: 0.8rem; color: var(--text-3); margin-top: 2px; }
     .bus-item a { color: var(--accent-dark); text-decoration: none; font-size: 0.8rem; font-weight: 600; }
     .card-banner {
-      width: 100%; height: 110px; object-fit: cover; border-radius: var(--radius-sm);
-      margin-bottom: 14px; display: block;
+      /* Same reasoning as .hub-card-photo above: a fixed pixel height crops
+         down to almost nothing once the centre column is allowed to stretch
+         on a wider screen. aspect-ratio keeps a sensible proportion of the
+         photo visible at any width, capped so it doesn't get absurdly tall
+         on a narrow phone. */
+      width: 100%; aspect-ratio: 20 / 7; max-height: 320px; object-fit: cover;
+      border-radius: var(--radius-sm); margin-bottom: 14px; display: block;
     }
     #trafficMap { width: 100%; height: 340px; border-radius: var(--radius-sm); margin-bottom: 12px; background: #e5e7eb; }
     .map-legend { font-size: 0.72rem; color: var(--text-3); margin: -6px 0 14px; }
