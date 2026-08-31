@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 
 const dashboardRoute = require('./routes/dashboard');
+const { geocodeLocation } = require('./fetchers/geocode');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -20,6 +21,17 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/dashboard', dashboardRoute);
+
+// GET /api/geocode?q=<town or postcode> — turns typed text into a lat/lon
+// so the location search bar can request conditions for a specific place.
+app.get('/api/geocode', async (req, res) => {
+  try {
+    const result = await geocodeLocation(req.query.q);
+    res.json(result);
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
 
 // NOTE: billing (Stripe checkout/webhook/portal), auth, saved locations, and the
 // alert-preferences/push routes from the spec are Phase 1.5+ — deliberately not

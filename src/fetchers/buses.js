@@ -16,10 +16,13 @@
 // feed despite matching the documented SIRI-VM schema; regex against the
 // confirmed-working reference avoids trusting an unverified schema.
 
+const { nearestTown } = require('../lib/cornwallTowns');
+
 const BODS_API_KEY = process.env.BODS_API_KEY;
 
 // Same Cornwall bounding box as wildlife.js — minLon,minLat,maxLon,maxLat,
-// which is the exact order BODS documents for this parameter.
+// which is the exact order BODS documents for this parameter. Used when no
+// specific location was searched for.
 const CORNWALL_BOUNDING_BOX = '-5.75,49.9,-4.2,50.75';
 
 // Destination names some vehicles report that aren't real passenger
@@ -33,7 +36,7 @@ function formatTime(iso) {
   return isNaN(d) ? '' : d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' });
 }
 
-async function getLiveBuses({ boundingBox = CORNWALL_BOUNDING_BOX } = {}) {
+async function getLiveBuses({ lat, lon, boundingBox } = {}) {
   if (!BODS_API_KEY) {
     return {
       source: 'BODS',
@@ -44,7 +47,22 @@ async function getLiveBuses({ boundingBox = CORNWALL_BOUNDING_BOX } = {}) {
     };
   }
 
-  const url = `https://data.bus-data.dft.gov.uk/api/v1/datafeed?boundingBox=${boundingBox}&api_key=${BODS_API_KEY}`;
+  // If a specific location was given, search a ~25km box around it (same
+  // proportions as the reference implementation's per-point box) instead of
+  // the whole county — a tighter, more relevant result set for that search.
+  let box = boundingBox || CORNWALL_BOUNDING_BOX;
+  let searchedLocation = 'Cornwall-wide';
+  if (!boundingBox && lat != null && lon != null) {
+    const minLon = (lon - 0.25).toFixed(4);
+    const maxLon = (lon + 0.25).toFixed(4);
+    const minLat = (lat - 0.15).toFixed(4);
+    const maxLat = (lat + 0.15).toFixed(4);
+    box = `${minLon},${minLat},${maxLon},${maxLat}`;
+    const town = nearestTown(lat, lon);
+    searchedLocation = town ? `near ${town.name}` : 'your searched location';
+  }
+
+  const url = `https://data.bus-data.dft.gov.uk/api/v1/datafeed?boundingBox=${box}&api_key=${BODS_API_KEY}`;
 
   const res = await fetch(url);
   if (!res.ok) {
@@ -65,10 +83,13 @@ async function getLiveBuses({ boundingBox = CORNWALL_BOUNDING_BOX } = {}) {
   const vehicles = rawBlocks
     .map((block) => {
       const rawDest = block.match(/<DestinationName>(.*?)<\/DestinationName>/)?.[1] || '';
-      const lat = block.match(/<Latitude>(.*?)<\/Latitude>/)?.[1];
-      const lon = block.match(/<Longitude>(.*?)<\/Longitude>/)?.[1];
+      const rawLat = block.match(/<Latitude>(.*?)<\/Latitude>/)?.[1];
+      const rawLon = block.match(/<Longitude>(.*?)<\/Longitude>/)?.[1];
       const arrivalRaw = block.match(/<DestinationAimedArrivalTime>(.*?)<\/DestinationAimedArrivalTime>/)?.[1];
       const recordedRaw = block.match(/<RecordedAtTime>(.*?)<\/RecordedAtTime>/)?.[1];
+      const vLat = rawLat ? parseFloat(rawLat) : null;
+      const vLon = rawLon ? parseFloat(rawLon) : null;
+      const near = vLat != null && vLon != null ? nearestTown(vLat, vLon) : null;
 
       return {
         line:
@@ -76,7 +97,12 @@ async function getLiveBuses({ boundingBox = CORNWALL_BOUNDING_BOX } = {}) {
           block.match(/<LineRef>(.*?)<\/LineRef>/)?.[1] ||
           '',
         destination: rawDest.replace(/_/g, ' ').trim(),
-        mapUrl: lat && lon ? `https://www.google.com/maps?q=${lat},${lon}` : '',
+        // Roughly where this vehicle currently is, not where it's headed —
+        // BODS gives a live position, not a stop name, so "near <town>"
+        // (nearest of a fixed town list, ~a few km precision) is the
+        // clearest thing we can show without a full stops database.
+        nearLocation: near ? near.name : null,
+        mapUrl: vLat != null && vLon != null ? `https://www.google.com/maps?q=${vLat},${vLon}` : '',
         arrivalTime: formatTime(arrivalRaw), // when it's due at its final destination
         updatedTime: formatTime(recordedRaw), // how fresh this exact position is
       };
@@ -92,6 +118,7 @@ async function getLiveBuses({ boundingBox = CORNWALL_BOUNDING_BOX } = {}) {
   return {
     source: 'BODS',
     configured: true,
+    searchedLocation,
     vehicles,
     fetchedAt: new Date().toISOString(),
   };

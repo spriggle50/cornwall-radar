@@ -6,6 +6,7 @@ const { getRecentSightings } = require('../fetchers/wildlife');
 const { getNews } = require('../fetchers/news');
 const { getTrafficIncidents } = require('../fetchers/traffic');
 const { getLiveBuses } = require('../fetchers/buses');
+const { getTideTimes } = require('../fetchers/tides');
 
 // GET /api/dashboard?lat=&lon=
 // Aggregates all five sources. Each is wrapped so one failing source
@@ -15,12 +16,13 @@ router.get('/', async (req, res) => {
   const lat = req.query.lat ? parseFloat(req.query.lat) : undefined;
   const lon = req.query.lon ? parseFloat(req.query.lon) : undefined;
 
-  const [weather, wildlife, news, traffic, buses] = await Promise.allSettled([
+  const [weather, wildlife, news, traffic, buses, tides] = await Promise.allSettled([
     getWeather(lat, lon),
     getRecentSightings(),
     getNews(),
     getTrafficIncidents({ lat, lon }),
-    getLiveBuses(),
+    getLiveBuses({ lat, lon }),
+    getTideTimes({ lat, lon }),
   ]);
 
   const unwrap = (result, label) =>
@@ -34,6 +36,7 @@ router.get('/', async (req, res) => {
     news: unwrap(news, 'news'),
     traffic: unwrap(traffic, 'traffic'),
     buses: unwrap(buses, 'buses'),
+    tides: unwrap(tides, 'tides'),
     generatedAt: new Date().toISOString(),
   });
 });

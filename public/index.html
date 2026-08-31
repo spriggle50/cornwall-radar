@@ -18,7 +18,25 @@
     }
     header h1 { margin: 0; font-size: 1.4rem; }
     header p { margin: 4px 0 0; opacity: 0.85; font-size: 0.9rem; }
+    .location-bar {
+      display: flex; gap: 8px; padding: 12px 16px; background: #095c40;
+    }
+    .location-bar input {
+      flex: 1; padding: 9px 12px; border-radius: 8px; border: none;
+      font-size: 0.9rem; min-width: 0;
+    }
+    .location-bar button {
+      padding: 9px 14px; border-radius: 8px; border: none; background: #fff;
+      color: #0b6e4f; font-weight: 600; font-size: 0.85rem; cursor: pointer; white-space: nowrap;
+    }
+    .location-bar button:active { opacity: 0.85; }
+    .location-status {
+      padding: 8px 16px; font-size: 0.8rem; color: #0b6e4f; background: #e3f3ec;
+    }
+    .location-status .change-link { color: #0b6e4f; text-decoration: underline; cursor: pointer; background: none; border: none; font: inherit; padding: 0; margin-left: 6px; }
+    .location-error { color: #b91c1c; }
     main { padding: 12px; max-width: 640px; margin: 0 auto; }
+    .section-subtitle { font-size: 0.78rem; color: #6b7280; margin: -4px 0 10px; }
     .card {
       background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.08);
@@ -37,6 +55,21 @@
     .traffic-item .desc, .bus-item .dest { color: #444; }
     .bus-item .times { font-size: 0.8rem; color: #6b7280; }
     .bus-item a { color: #0b6e4f; text-decoration: none; font-size: 0.8rem; }
+    .card-banner {
+      width: 100%; height: 100px; object-fit: cover; border-radius: 10px;
+      margin-bottom: 12px; display: block;
+    }
+    .tide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .tide-chip {
+      display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+      border-radius: 10px; border: 1px solid #e5e7eb; background: #f9fafb;
+    }
+    .tide-chip.high { border-color: #99d9cd; background: #edf9f5; }
+    .tide-chip.low { border-color: #c7cffb; background: #f1f2fe; }
+    .tide-chip-icon { font-size: 1.3rem; flex-shrink: 0; }
+    .tide-chip-type { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; }
+    .tide-chip-time { font-size: 1.1rem; font-weight: 700; color: #1a1a1a; line-height: 1.1; }
+    .tide-chip-height { font-size: 0.75rem; color: #0b6e4f; font-weight: 600; }
     footer { text-align: center; padding: 20px; color: #888; font-size: 0.8rem; }
   </style>
 </head>
@@ -45,22 +78,103 @@
     <h1>🌤️ Cornwall Radar</h1>
     <p>The place to check before heading out</p>
   </header>
+  <div class="location-bar" id="locationBar">
+    <input type="text" id="locationInput" placeholder="Enter a Cornwall town or postcode…" />
+    <button id="scanBtn">Scan</button>
+    <button id="myLocationBtn" title="Use my current location">📍</button>
+  </div>
+  <div class="location-status" id="locationStatus">Showing: Cornwall-wide overview</div>
   <main id="app">
     <div class="card"><p>Loading live Cornwall data…</p></div>
   </main>
   <footer>Weather: Open-Meteo · Wildlife: GBIF · Phase 1 build</footer>
 
   <script>
+    // Remembers the visitor's last searched place in *their* browser only —
+    // never sent anywhere, just a small convenience so refreshing doesn't
+    // reset them back to the county-wide default.
+    function loadSavedLocation() {
+      try {
+        const raw = localStorage.getItem('cornwallRadarLocation');
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) { return null; }
+    }
+    function saveLocation(loc) {
+      try { localStorage.setItem('cornwallRadarLocation', JSON.stringify(loc)); } catch (e) {}
+    }
+
+    let currentLocation = loadSavedLocation(); // { lat, lon, label } or null = Cornwall-wide default
+
+    function updateLocationStatus() {
+      const el = document.getElementById('locationStatus');
+      if (currentLocation) {
+        el.innerHTML = 'Showing: ' + currentLocation.label
+          + '<button class="change-link" onclick="clearLocation()">change</button>';
+      } else {
+        el.textContent = 'Showing: Cornwall-wide overview (traffic centred on Truro)';
+      }
+    }
+
+    function clearLocation() {
+      currentLocation = null;
+      try { localStorage.removeItem('cornwallRadarLocation'); } catch (e) {}
+      updateLocationStatus();
+      loadDashboard();
+    }
+
+    async function scanLocation() {
+      const input = document.getElementById('locationInput');
+      const query = input.value.trim();
+      if (!query) return;
+      const status = document.getElementById('locationStatus');
+      status.textContent = 'Searching for "' + query + '"…';
+      try {
+        const res = await fetch('/api/geocode?q=' + encodeURIComponent(query));
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Location not found');
+        }
+        const loc = await res.json();
+        currentLocation = loc;
+        saveLocation(loc);
+        updateLocationStatus();
+        loadDashboard();
+      } catch (err) {
+        status.innerHTML = '<span class="location-error">' + err.message + '</span>';
+      }
+    }
+
+    function useMyLocation() {
+      if (!navigator.geolocation) return;
+      const status = document.getElementById('locationStatus');
+      status.textContent = 'Finding your location…';
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          currentLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude, label: 'your current location' };
+          saveLocation(currentLocation);
+          updateLocationStatus();
+          loadDashboard();
+        },
+        () => { status.innerHTML = '<span class="location-error">Could not get your location</span>'; }
+      );
+    }
+
     async function loadDashboard() {
       const app = document.getElementById('app');
       try {
-        const res = await fetch('/api/dashboard');
+        const params = new URLSearchParams();
+        if (currentLocation) {
+          params.set('lat', currentLocation.lat);
+          params.set('lon', currentLocation.lon);
+        }
+        const res = await fetch('/api/dashboard' + (params.toString() ? '?' + params.toString() : ''));
         const data = await res.json();
         app.innerHTML = renderWeather(data.weather)
-          + renderNews(data.news)
-          + renderWildlife(data.wildlife)
+          + renderTides(data.tides)
           + renderTraffic(data.traffic)
-          + renderBuses(data.buses);
+          + renderBuses(data.buses)
+          + renderWildlife(data.wildlife)
+          + renderNews(data.news);
       } catch (err) {
         app.innerHTML = '<div class="card"><p class="unavailable">Could not reach the dashboard API: ' + err.message + '</p></div>';
       }
@@ -96,6 +210,30 @@
       return '<div class="card"><h2>🦡 Wildlife Sightings</h2>' + items + '</div>';
     }
 
+    function renderTides(t) {
+      const title = '🌊 Tide Times';
+      const banner = '<img class="card-banner" src="/images/tides.jpg" alt="" />';
+
+      if (!t || t.unavailable) {
+        return '<div class="card">' + banner + '<h2>' + title + '</h2><p class="unavailable">Unavailable right now (' + (t?.error || 'unknown error') + ')</p></div>';
+      }
+      if (!t.tides || t.tides.length === 0) {
+        return '<div class="card">' + banner + '<h2>' + title + '</h2><p class="unavailable">No tide data right now</p></div>';
+      }
+      const subtitle = t.station ? '<p class="section-subtitle">Nearest station: ' + t.station + '</p>' : '';
+      const chips = t.tides.slice(0, 4).map(tide => {
+        const cls = tide.type === 'High' ? 'high' : 'low';
+        const icon = tide.type === 'High' ? '⬆️' : '⬇️';
+        return '<div class="tide-chip ' + cls + '">'
+          + '<span class="tide-chip-icon">' + icon + '</span>'
+          + '<div><div class="tide-chip-type">' + tide.type + ' Tide</div>'
+          + '<div class="tide-chip-time">' + tide.time + '</div>'
+          + '<div class="tide-chip-height">' + tide.heightM + 'm</div></div>'
+          + '</div>';
+      }).join('');
+      return '<div class="card">' + banner + '<h2>' + title + '</h2>' + subtitle + '<div class="tide-grid">' + chips + '</div></div>';
+    }
+
     // Shared not-configured / error / coming-online states for a section
     // that hasn't got a live list to show. Returns null when the section
     // is configured and should be rendered by its own list renderer instead.
@@ -117,14 +255,16 @@
       const state = unavailableState(title, t);
       if (state) return state;
 
+      const subtitle = t.searchedLocation ? '<p class="section-subtitle">' + t.searchedLocation + '</p>' : '';
+
       if (!t.incidents || t.incidents.length === 0) {
-        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">No incidents reported right now — roads look clear</p></div>';
+        return '<div class="card"><h2>' + title + '</h2>' + subtitle + '<p class="unavailable">No incidents reported right now — roads look clear</p></div>';
       }
       const items = t.incidents.slice(0, 10).map(i =>
         '<div class="traffic-item"><span class="road">' + i.road + '</span><br>'
         + '<span class="desc">' + i.description + '</span></div>'
       ).join('');
-      return '<div class="card"><h2>' + title + '</h2>' + items + '</div>';
+      return '<div class="card"><h2>' + title + '</h2>' + subtitle + items + '</div>';
     }
 
     function renderBuses(b) {
@@ -132,11 +272,14 @@
       const state = unavailableState(title, b);
       if (state) return state;
 
+      const subtitle = b.searchedLocation ? '<p class="section-subtitle">' + b.searchedLocation + '</p>' : '';
+
       if (!b.vehicles || b.vehicles.length === 0) {
-        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">No active routes reported right now</p></div>';
+        return '<div class="card"><h2>' + title + '</h2>' + subtitle + '<p class="unavailable">No active routes reported right now</p></div>';
       }
       const items = b.vehicles.slice(0, 15).map(v => {
         const times = [
+          v.nearLocation ? 'near ' + v.nearLocation : '',
           v.updatedTime ? 'updated ' + v.updatedTime : '',
           v.arrivalTime ? 'due ' + v.arrivalTime : '',
         ].filter(Boolean).join(' · ');
@@ -147,9 +290,16 @@
           + (v.mapUrl ? '<a href="' + v.mapUrl + '" target="_blank">View on map</a>' : '')
           + '</div>';
       }).join('');
-      return '<div class="card"><h2>' + title + '</h2>' + items + '</div>';
+      return '<div class="card"><h2>' + title + '</h2>' + subtitle + items + '</div>';
     }
 
+    document.getElementById('scanBtn').addEventListener('click', scanLocation);
+    document.getElementById('myLocationBtn').addEventListener('click', useMyLocation);
+    document.getElementById('locationInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') scanLocation();
+    });
+    if (currentLocation) document.getElementById('locationInput').value = currentLocation.label;
+    updateLocationStatus();
     loadDashboard();
   </script>
 </body>

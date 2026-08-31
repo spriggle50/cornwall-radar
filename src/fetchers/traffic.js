@@ -7,6 +7,8 @@
 // own already-working TomTom integration — rewritten here as Cornwall
 // Radar's own standalone copy, not shared or imported from that project.
 
+const { nearestTown } = require('../lib/cornwallTowns');
+
 const TOMTOM_API_KEY = process.env.TOMTOM_API_KEY;
 
 // Same default as weather.js — Truro, Cornwall — used whenever no location
@@ -71,9 +73,12 @@ async function getTrafficIncidents({ lat = DEFAULT_LAT, lon = DEFAULT_LON, radiu
     .filter((i) => i.description)
     .slice(0, 10);
 
+  const town = nearestTown(lat, lon);
+
   return {
     source: 'TomTom',
     configured: true,
+    searchedLocation: town ? `within ${Math.round(radiusMeters / 1000)}km of ${town.name}` : 'within range of the searched point',
     incidents,
     fetchedAt: new Date().toISOString(),
   };
