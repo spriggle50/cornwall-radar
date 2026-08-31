@@ -1,8 +1,17 @@
-// Local ticketed events — Ticketmaster Discovery API + Eventbrite, combined
-// the same way a separately-run project already does successfully. Both
-// are optional (free developer registration, no card required) — with
-// neither key set this whole section just reports "not configured", and
-// the free What's On RSS feed (whatson.js) alongside it keeps working.
+// Local ticketed events — Ticketmaster Discovery API.
+//
+// Eventbrite was originally layered in here too, matching a separately-run
+// project's own code — but Eventbrite permanently shut off public event
+// search for standard developer keys in February 2020 (the /v3/events/search/
+// endpoint now returns a 404 "path does not exist" for everyone, not just
+// this key — there's no fix or workaround available, only organisation- or
+// venue-scoped listing, which isn't useful for "what's on near me"). So it's
+// been removed rather than left in to throw a permanent error. Ticketmaster's
+// public search API is still live and working.
+//
+// Ticketmaster is optional (free developer registration, no card required)
+// — with no key set this section just reports "not configured", and the
+// free What's On RSS feed (whatson.js) alongside it keeps working regardless.
 //
 // Cornwall residents commonly travel to Plymouth for bigger gigs/shows, so
 // a second search centred there is always layered in alongside the local
@@ -12,7 +21,6 @@
 const { nearestTown } = require('../lib/cornwallTowns');
 
 const TICKETMASTER_API_KEY = process.env.TICKETMASTER_API_KEY;
-const EVENTBRITE_API_KEY = process.env.EVENTBRITE_API_KEY;
 
 const DEFAULT_LAT = 50.2632;
 const DEFAULT_LON = -5.0510;
@@ -62,53 +70,14 @@ async function fetchTicketmaster(searches) {
   return results;
 }
 
-async function fetchEventbrite(searches) {
-  const results = [];
-  for (const search of searches) {
-    const params = new URLSearchParams({
-      'location.address': `${search.label}, UK`,
-      'location.within': '30mi',
-      'start_date.range_start': new Date().toISOString().slice(0, 19) + 'Z',
-      'start_date.range_end': new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19) + 'Z',
-      expand: 'venue,category,logo',
-      page_size: '10',
-      sort_by: 'date',
-      status: 'live',
-    });
-    const url = `https://www.eventbriteapi.com/v3/events/search/?${params.toString()}`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${EVENTBRITE_API_KEY}` } });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.error) {
-      throw new Error(`Eventbrite request failed (${search.label}): ${data.error_description || data.error || res.statusText}`);
-    }
-
-    const events = (data.events || []).map((e) => ({
-      name: decodeURIComponent(e.name?.text || 'Event'),
-      date: e.start?.local ? e.start.local.slice(0, 10) : null,
-      time: e.start?.local ? e.start.local.slice(11, 16) : null,
-      venue: decodeURIComponent(e.venue?.name || 'Local venue'),
-      city: decodeURIComponent(e.venue?.address?.city || search.label),
-      category: e.category?.name || 'Community',
-      subCategory: e.subcategory?.name || null,
-      url: e.url || null,
-      image: e.logo?.original?.url || e.logo?.url || null,
-      priceMin: e.is_free ? 0 : null,
-      source: 'eventbrite',
-    }));
-    results.push(...events);
-  }
-  return results;
-}
-
 async function getEvents({ lat = DEFAULT_LAT, lon = DEFAULT_LON } = {}) {
   const tmConfigured = !!TICKETMASTER_API_KEY;
-  const ebConfigured = !!EVENTBRITE_API_KEY;
 
-  if (!tmConfigured && !ebConfigured) {
+  if (!tmConfigured) {
     return {
       source: 'Events',
       configured: false,
-      message: 'Neither TICKETMASTER_API_KEY nor EVENTBRITE_API_KEY is set — add either (or both) to .env for ticketed local events. Both offer free developer registration.',
+      message: 'TICKETMASTER_API_KEY is not set — add it to .env for ticketed local events (free developer registration at developer.ticketmaster.com).',
       events: [],
     };
   }
@@ -118,27 +87,16 @@ async function getEvents({ lat = DEFAULT_LAT, lon = DEFAULT_LON } = {}) {
 
   let tmEvents = [];
   let tmError = null;
-  if (tmConfigured) {
-    try {
-      tmEvents = await fetchTicketmaster(searches);
-    } catch (err) {
-      tmError = err.message;
-    }
+  try {
+    tmEvents = await fetchTicketmaster(searches);
+  } catch (err) {
+    tmError = err.message;
   }
 
-  let ebEvents = [];
-  let ebError = null;
-  if (ebConfigured) {
-    try {
-      ebEvents = await fetchEventbrite(searches);
-    } catch (err) {
-      ebError = err.message;
-    }
-  }
-
-  const all = [...tmEvents, ...ebEvents];
+  // Still de-duplicate (by name + date) — the local and Plymouth searches
+  // can both surface the same regional tour date.
   const seen = new Set();
-  const unique = all.filter((e) => {
+  const unique = tmEvents.filter((e) => {
     const key = `${e.name}|${e.date}`;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -146,21 +104,12 @@ async function getEvents({ lat = DEFAULT_LAT, lon = DEFAULT_LON } = {}) {
   });
   unique.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
 
-  const sourceNotes = [];
-  if (tmError) sourceNotes.push('Ticketmaster: ' + tmError);
-  if (ebError) sourceNotes.push('Eventbrite: ' + ebError);
-
   return {
-    source: [tmConfigured && 'Ticketmaster', ebConfigured && 'Eventbrite'].filter(Boolean).join(' + '),
+    source: 'Ticketmaster',
     configured: true,
     events: unique,
-    // Counted post-dedupe so the badge shown in the UI matches what's
-    // actually in the list, not the raw (pre-dedupe) per-source fetch totals.
-    sourceCounts: {
-      ticketmaster: unique.filter((e) => e.source === 'ticketmaster').length,
-      eventbrite: unique.filter((e) => e.source === 'eventbrite').length,
-    },
-    sourceNotes: sourceNotes.length ? sourceNotes : undefined,
+    sourceCounts: { ticketmaster: unique.length },
+    sourceNotes: tmError ? ['Ticketmaster: ' + tmError] : undefined,
     fetchedAt: new Date().toISOString(),
   };
 }

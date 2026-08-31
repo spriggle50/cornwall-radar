@@ -903,8 +903,9 @@
     // Events & What's On — two independent sources on one page, matching a
     // separately-run project's own layout: an always-on, free, keyless
     // "What's On" photo feed (Cornwall Live's dedicated RSS feed) plus an
-    // optional grid of ticketed events (Ticketmaster/Eventbrite, grouped by
-    // month) that only appears once at least one of those keys is set.
+    // optional grid of ticketed events (Ticketmaster, grouped by month)
+    // that only appears once that key is set. Eventbrite was tried too but
+    // its public search API has been shut off for standard keys since 2020.
     function renderEventsWhatsonDetail(d) {
       const title = "🎉 Events & What's On";
       if (!d) return '<div class="card"><h2>' + title + '</h2><p class="unavailable">Unavailable right now</p></div>';
