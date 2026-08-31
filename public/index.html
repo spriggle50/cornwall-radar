@@ -330,16 +330,20 @@
       if (state) return state;
 
       const subtitle = t.searchedLocation ? '<p class="section-subtitle">' + t.searchedLocation + '</p>' : '';
-      const mapBlock = '<div id="trafficMap"></div><p class="map-legend">Coloured lines show current traffic flow speed · markers/lines show reported incidents</p>';
+      const notes = (t.sourceNotes && t.sourceNotes.length)
+        ? '<p class="section-subtitle" style="color:#b45309;">' + t.sourceNotes.join(' · ') + '</p>'
+        : '';
+      const mapBlock = '<div id="trafficMap"></div><p class="map-legend">🟠 closure (National Highways) · 🔴 incident (TomTom) · coloured lines show live traffic flow speed</p>';
 
       if (!t.incidents || t.incidents.length === 0) {
-        return '<div class="card"><h2>' + title + '</h2>' + subtitle + mapBlock + '<p class="unavailable">No incidents reported right now — roads look clear</p></div>';
+        return '<div class="card"><h2>' + title + '</h2>' + subtitle + notes + mapBlock + '<p class="unavailable">No incidents reported right now — roads look clear</p></div>';
       }
-      const items = t.incidents.slice(0, 10).map(i =>
-        '<div class="traffic-item"><span class="road">' + i.road + '</span><br>'
-        + '<span class="desc">' + i.description + '</span></div>'
-      ).join('');
-      return '<div class="card"><h2>' + title + '</h2>' + subtitle + mapBlock + items + '</div>';
+      const items = t.incidents.slice(0, 20).map(i => {
+        const badge = i.kind === 'closure' ? '🟠 Closure' : '🔴 Incident';
+        return '<div class="traffic-item"><span class="road">' + badge + ' · ' + i.road + '</span><br>'
+          + '<span class="desc">' + i.description + '</span></div>';
+      }).join('');
+      return '<div class="card"><h2>' + title + '</h2>' + subtitle + notes + mapBlock + items + '</div>';
     }
 
     // Sets up (or resets) the Leaflet map for the traffic detail view. Base
@@ -378,12 +382,14 @@
 
       (t && t.incidents ? t.incidents : []).forEach((inc) => {
         if (!inc.coordinates) return;
+        const color = inc.kind === 'closure' ? '#ea580c' : '#dc2626'; // orange for National Highways closures, red for TomTom incidents
+        const label = (inc.kind === 'closure' ? 'Closure: ' : 'Incident: ') + inc.description;
         if (inc.geometryType === 'LineString') {
           const latlngs = inc.coordinates.map((c) => [c[1], c[0]]);
-          L.polyline(latlngs, { color: '#dc2626', weight: 4 }).addTo(map).bindPopup(inc.description);
+          L.polyline(latlngs, { color, weight: 4 }).addTo(map).bindPopup(label);
         } else {
           const [lon, lat] = inc.coordinates;
-          L.marker([lat, lon]).addTo(map).bindPopup(inc.description);
+          L.circleMarker([lat, lon], { radius: 8, color, fillColor: color, fillOpacity: 0.8 }).addTo(map).bindPopup(label);
         }
       });
     }
