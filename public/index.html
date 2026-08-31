@@ -144,13 +144,19 @@
     .hub-card-body { padding: 11px 13px 13px; }
     .hub-card-title { font-size: 0.86rem; font-weight: 700; color: var(--text); margin-bottom: 3px; letter-spacing: -0.01em; }
     .hub-card-preview { font-size: 0.75rem; color: var(--text-2); line-height: 1.35; }
-    /* Row-style hub card for sections with no photo (News) */
-    .hub-card.row { flex-direction: row; align-items: flex-start; gap: 12px; padding: 14px; }
+    /* Row-style hub card for sections with no photo (News) — spans the full
+       grid width so the title has room to sit on one line, styled like a
+       settings-list row rather than a squeezed-down photo card. */
+    .hub-card.wide { grid-column: 1 / -1; }
+    .hub-card.row { flex-direction: row; align-items: center; gap: 13px; padding: 15px 16px; }
     .hub-card.row .hub-card-icon {
-      font-size: 1.35rem; flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px;
+      font-size: 1.5rem; flex-shrink: 0; width: 46px; height: 46px; border-radius: 13px;
       background: var(--accent-soft); display: flex; align-items: center; justify-content: center;
     }
     .hub-card.row .hub-card-body { padding: 0; flex: 1; min-width: 0; }
+    .hub-card.row .hub-card-title { margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hub-card.row .hub-card-preview { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hub-card.row .hub-card-chevron { flex-shrink: 0; color: var(--text-3); font-size: 1.1rem; }
 
     .back-btn {
       display: inline-flex; align-items: center; gap: 6px; background: var(--card-bg);
@@ -189,6 +195,50 @@
     .tide-chip-type { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); }
     .tide-chip-time { font-size: 1.15rem; font-weight: 800; color: var(--text); line-height: 1.15; }
     .tide-chip-height { font-size: 0.76rem; color: var(--accent-dark); font-weight: 700; }
+
+    /* ── Weather Details page — extended forecast, pollen, and extra
+       current-conditions stats. Kept as its own hub card + detail view
+       rather than crowding the top-of-page hero, which stays the fast
+       at-a-glance read. */
+    .wd-subhead { font-size: 0.88rem; font-weight: 700; margin: 18px 0 10px; }
+    .wd-subhead:first-of-type { margin-top: 4px; }
+
+    .wd-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .wd-stat { padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: #f9fbfa; }
+    .wd-stat-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); }
+    .wd-stat-value { font-size: 1rem; font-weight: 700; color: var(--text); margin-top: 2px; }
+
+    .wd-forecast-list { display: flex; flex-direction: column; }
+    .wd-forecast-row {
+      display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+    .wd-forecast-row:first-child { border-top: none; }
+    .wd-forecast-day { font-weight: 700; width: 38px; flex-shrink: 0; }
+    .wd-forecast-emoji { font-size: 1.2rem; flex-shrink: 0; }
+    .wd-forecast-cond { flex: 1; color: var(--text-2); min-width: 0; }
+    .wd-forecast-rain { color: var(--text-3); font-size: 0.78rem; flex-shrink: 0; }
+    .wd-forecast-temps { font-weight: 700; flex-shrink: 0; }
+    .wd-forecast-temps .lo { opacity: 0.6; font-weight: 500; }
+
+    .pollen-list { display: flex; flex-direction: column; gap: 12px; }
+    .pollen-row-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+    .pollen-type { font-size: 0.88rem; font-weight: 700; }
+    .pollen-cat { font-size: 0.72rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+    .pollen-cat.pollen-low { background: var(--accent-soft); color: var(--accent-dark); }
+    .pollen-cat.pollen-moderate { background: #fef3c7; color: #92400e; }
+    .pollen-cat.pollen-high { background: #ffe4d5; color: #9a3412; }
+    .pollen-cat.pollen-veryhigh { background: #fee2e2; color: #b91c1c; }
+    .pollen-cat.pollen-none { background: #f1f2f4; color: var(--text-3); }
+    .pollen-bar-track { height: 8px; border-radius: 999px; background: #eef1f0; overflow: hidden; }
+    .pollen-bar-fill { height: 100%; border-radius: 999px; }
+    .pollen-bar-fill.pollen-low { background: var(--accent); }
+    .pollen-bar-fill.pollen-moderate { background: #f0b429; }
+    .pollen-bar-fill.pollen-high { background: #f0713a; }
+    .pollen-bar-fill.pollen-veryhigh { background: #dc2626; }
+    .pollen-bar-fill.pollen-none { background: var(--text-3); }
+    .pollen-tip { font-size: 0.78rem; color: var(--text-2); margin-top: 5px; line-height: 1.35; }
+
     footer { text-align: center; padding: 24px 16px; color: var(--text-3); font-size: 0.78rem; }
   </style>
 </head>
@@ -397,10 +447,19 @@
         if (!n || !n.items || !n.items.length) return 'No stories right now';
         return n.items[0].title;
       }
+      if (key === 'weatherDetails') {
+        const p = d.pollen;
+        if (p && p.configured && p.types && p.types.length) {
+          const top = p.types.slice().sort((a, b) => (b.value || 0) - (a.value || 0))[0];
+          return 'Pollen: ' + (top.category || 'available') + ' · extended forecast';
+        }
+        return 'Pollen count & extended forecast';
+      }
       return '';
     }
 
     const HUB_SECTIONS = [
+      { key: 'weatherDetails', icon: '🌤️', title: 'Weather Details', photo: '/images/weather-hero.jpg' },
       { key: 'traffic', icon: '🚗', title: 'Traffic', photo: '/images/traffic-hero.jpg' },
       { key: 'buses', icon: '🚌', title: 'Live Buses', photo: '/images/buses-hero.jpg' },
       { key: 'tides', icon: '🌊', title: 'Tide Times', photo: '/images/tides.jpg' },
@@ -419,10 +478,11 @@
             + '<div class="hub-card-preview">' + preview + '</div></div>'
             + '</button>';
         }
-        return '<button class="hub-card row" onclick="openDetail(\'' + s.key + '\')">'
+        return '<button class="hub-card row wide" onclick="openDetail(\'' + s.key + '\')">'
           + '<span class="hub-card-icon">' + s.icon + '</span>'
           + '<div class="hub-card-body"><div class="hub-card-title">' + s.title + '</div>'
           + '<div class="hub-card-preview">' + preview + '</div></div>'
+          + '<span class="hub-card-chevron">›</span>'
           + '</button>';
       }).join('');
     }
@@ -438,9 +498,14 @@
         tides: renderTidesDetail,
         wildlife: renderWildlifeDetail,
         news: renderNewsDetail,
+        weatherDetails: renderWeatherDetailsDetail,
       };
       const backBtn = '<button class="back-btn" onclick="closeDetail()">← Back</button>';
-      panel.innerHTML = backBtn + renderers[key](dashboardData ? dashboardData[key] : null);
+      // weatherDetails draws from three top-level fields at once (weather,
+      // pollen, weatherDetail) rather than a single dashboardData[key], so it
+      // gets the whole payload instead of one slice of it.
+      const sectionData = key === 'weatherDetails' ? dashboardData : (dashboardData ? dashboardData[key] : null);
+      panel.innerHTML = backBtn + renderers[key](sectionData);
 
       if (key === 'traffic') initTrafficMap(dashboardData ? dashboardData.traffic : null);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -602,6 +667,90 @@
         '<div class="sighting">' + s.species + (s.locality ? ' — ' + s.locality : '') + '</div>'
       ).join('');
       return '<div class="card">' + banner + '<h2>🦡 Wildlife Sightings</h2>' + items + '</div>';
+    }
+
+    // Weather Details — a second, separate page from the top-of-page hero.
+    // The hero stays the fast at-a-glance read (Open-Meteo, always on); this
+    // page is for someone who wants to dig further: the full multi-day
+    // forecast, plus pollen counts and extra current-conditions stats from
+    // the Google APIs, both of which only appear once GOOGLE_MAPS_API_KEY is set.
+    function pollenCategoryClass(category) {
+      if (!category) return 'pollen-none';
+      const c = category.toLowerCase();
+      if (c.includes('very high')) return 'pollen-veryhigh';
+      if (c.includes('high')) return 'pollen-high';
+      if (c.includes('moderate')) return 'pollen-moderate';
+      if (c.includes('low')) return 'pollen-low';
+      return 'pollen-none';
+    }
+
+    function renderWeatherDetailsDetail(d) {
+      const banner = '<img class="card-banner" src="/images/weather-hero.jpg" alt="" />';
+      const title = '🌤️ Weather Details';
+      if (!d) return '<div class="card">' + banner + '<h2>' + title + '</h2><p class="unavailable">Unavailable right now</p></div>';
+
+      const w = d.weather;
+      const pollen = d.pollen;
+      const wd = d.weatherDetail;
+
+      let pollenBlock = '';
+      if (pollen && pollen.configured && pollen.types && pollen.types.length) {
+        const bars = pollen.types.map(t => {
+          const pct = t.value != null ? Math.min(100, (t.value / 5) * 100) : 0;
+          const catCls = pollenCategoryClass(t.category);
+          return '<div class="pollen-row">'
+            + '<div class="pollen-row-top"><span class="pollen-type">' + t.displayName + '</span><span class="pollen-cat ' + catCls + '">' + (t.category || '—') + '</span></div>'
+            + '<div class="pollen-bar-track"><div class="pollen-bar-fill ' + catCls + '" style="width:' + pct + '%"></div></div>'
+            + (t.recommendation ? '<div class="pollen-tip">' + t.recommendation + '</div>' : '')
+            + '</div>';
+        }).join('');
+        pollenBlock = '<h3 class="wd-subhead">Pollen forecast' + (pollen.date ? ' — ' + pollen.date : '') + '</h3><div class="pollen-list">' + bars + '</div>';
+      } else if (pollen && pollen.configured === false) {
+        pollenBlock = '<h3 class="wd-subhead">Pollen forecast</h3><p class="unavailable">' + pollen.message + '</p>';
+      } else if (pollen && pollen.unavailable) {
+        pollenBlock = '<h3 class="wd-subhead">Pollen forecast</h3><p class="unavailable">Unavailable right now (' + pollen.error + ')</p>';
+      }
+
+      let extraBlock = '';
+      if (wd && wd.configured) {
+        const stats = [
+          wd.humidityPct != null ? ['Humidity', wd.humidityPct + '%'] : null,
+          wd.dewPointC != null ? ['Dew point', Math.round(wd.dewPointC) + '°'] : null,
+          wd.windGustKph != null ? ['Wind gusts', Math.round(wd.windGustKph) + ' km/h'] : null,
+          wd.windDirection ? ['Wind direction', wd.windDirection] : null,
+          wd.cloudCoverPct != null ? ['Cloud cover', wd.cloudCoverPct + '%'] : null,
+          wd.visibilityKm != null ? ['Visibility', wd.visibilityKm + ' km'] : null,
+          wd.pressureMb != null ? ['Pressure', Math.round(wd.pressureMb) + ' mb'] : null,
+          wd.thunderstormChancePct != null ? ['Storm chance', wd.thunderstormChancePct + '%'] : null,
+        ].filter(Boolean);
+        if (stats.length) {
+          extraBlock = '<h3 class="wd-subhead">Current conditions detail</h3><div class="wd-stats-grid">'
+            + stats.map(([label, value]) => '<div class="wd-stat"><div class="wd-stat-label">' + label + '</div><div class="wd-stat-value">' + value + '</div></div>').join('')
+            + '</div>';
+        }
+      } else if (wd && wd.configured === false) {
+        extraBlock = '<h3 class="wd-subhead">Current conditions detail</h3><p class="unavailable">' + wd.message + '</p>';
+      } else if (wd && wd.unavailable) {
+        extraBlock = '<h3 class="wd-subhead">Current conditions detail</h3><p class="unavailable">Unavailable right now (' + wd.error + ')</p>';
+      }
+
+      let forecastBlock = '';
+      if (w && !w.unavailable && w.forecast && w.forecast.length) {
+        const rows = w.forecast.map(f => {
+          const dt = new Date(f.date + 'T12:00:00');
+          const dayName = isNaN(dt) ? f.date : DAY_NAMES[dt.getDay()];
+          return '<div class="wd-forecast-row">'
+            + '<span class="wd-forecast-day">' + dayName + '</span>'
+            + '<span class="wd-forecast-emoji">' + f.emoji + '</span>'
+            + '<span class="wd-forecast-cond">' + f.condition + '</span>'
+            + '<span class="wd-forecast-rain">' + (f.rainChancePct != null ? f.rainChancePct + '% rain' : '') + '</span>'
+            + '<span class="wd-forecast-temps">' + Math.round(f.maxTempC) + '&deg; <span class="lo">' + Math.round(f.minTempC) + '&deg;</span></span>'
+            + '</div>';
+        }).join('');
+        forecastBlock = '<h3 class="wd-subhead">Extended forecast</h3><div class="wd-forecast-list">' + rows + '</div>';
+      }
+
+      return '<div class="card">' + banner + '<h2>' + title + '</h2>' + pollenBlock + extraBlock + forecastBlock + '</div>';
     }
 
     function renderNewsDetail(n) {
