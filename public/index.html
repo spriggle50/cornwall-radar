@@ -296,6 +296,7 @@
   </div>
   <main id="app">
     <div id="weatherSummary"><div class="card"><p>Loading live Cornwall data…</p></div></div>
+    <div id="worldClockCard"></div>
     <div id="hubGrid" class="hub-grid"></div>
     <div id="detailPanel" hidden></div>
   </main>
@@ -383,6 +384,8 @@
         const res = await fetch('/api/dashboard' + (params.toString() ? '?' + params.toString() : ''));
         dashboardData = await res.json();
         document.getElementById('weatherSummary').innerHTML = renderWeather(dashboardData.weather);
+        document.getElementById('worldClockCard').innerHTML = renderWorldClockCard();
+        startWorldClock();
         renderHubGrid();
       } catch (err) {
         document.getElementById('weatherSummary').innerHTML =
@@ -547,13 +550,11 @@
       panel.innerHTML = backBtn + renderers[key](sectionData);
 
       if (key === 'traffic') initTrafficMap(dashboardData ? dashboardData.traffic : null);
-      if (key === 'weatherDetails') startWorldClock();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     function closeDetail() {
       if (trafficMapInstance) { trafficMapInstance.remove(); trafficMapInstance = null; }
-      stopWorldClock();
       document.getElementById('detailPanel').hidden = true;
       document.getElementById('detailPanel').innerHTML = '';
       document.getElementById('hubGrid').hidden = false;
@@ -758,21 +759,22 @@
       }).join('');
     }
 
-    function renderWorldClockSection() {
-      return '<h3 class="wd-subhead">World Clock</h3><div class="worldclock-grid" id="worldClockGrid">' + worldClockItemsHtml() + '</div>';
+    // Lives on the main page itself, right under the weather hero, rather
+    // than tucked inside the Weather Details page — it's meant to be seen
+    // at a glance, not found by clicking in. It's rebuilt fresh on every
+    // loadDashboard() call and then just ticks over locally every 30s
+    // (only the numbers need to refresh — no server round-trip involved).
+    function renderWorldClockCard() {
+      return '<div class="card"><h2>🕐 World Clock</h2><div class="worldclock-grid" id="worldClockGrid">' + worldClockItemsHtml() + '</div></div>';
     }
 
     function startWorldClock() {
-      stopWorldClock();
+      if (worldClockInterval) clearInterval(worldClockInterval);
       worldClockInterval = setInterval(() => {
         const grid = document.getElementById('worldClockGrid');
-        if (!grid) { stopWorldClock(); return; }
+        if (!grid) return;
         grid.innerHTML = worldClockItemsHtml();
       }, 30000);
-    }
-
-    function stopWorldClock() {
-      if (worldClockInterval) { clearInterval(worldClockInterval); worldClockInterval = null; }
     }
 
     function renderWeatherDetailsDetail(d) {
@@ -841,9 +843,7 @@
         forecastBlock = '<h3 class="wd-subhead">Extended forecast</h3><div class="wd-forecast-list">' + rows + '</div>';
       }
 
-      const worldClockBlock = renderWorldClockSection();
-
-      return '<div class="card">' + banner + '<h2>' + title + '</h2>' + pollenBlock + extraBlock + forecastBlock + worldClockBlock + '</div>';
+      return '<div class="card">' + banner + '<h2>' + title + '</h2>' + pollenBlock + extraBlock + forecastBlock + '</div>';
     }
 
     function renderNewsDetail(n) {
