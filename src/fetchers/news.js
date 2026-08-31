@@ -3,13 +3,25 @@
 // these are commonly-used Cornwall-relevant public feeds as a starting point.
 
 const Parser = require('rss-parser');
-const parser = new Parser({ timeout: 10000 });
+const parser = new Parser({
+  timeout: 10000,
+  // BBC's RSS carries a thumbnail per story via the standard Media RSS
+  // namespace — rss-parser only exposes it if told to look, same fix
+  // applied to the What's On feed in whatson.js.
+  customFields: {
+    item: [['media:thumbnail', 'mediaThumbnail', { keepArray: true }]],
+  },
+});
 
 const FEEDS = [
   { name: 'BBC News - Cornwall', category: 'news', url: 'https://feeds.bbci.co.uk/news/england/cornwall/rss.xml' },
   // Add/replace with the specific Cornwall Live / What's On RSS URLs Local Radar
   // already uses once confirmed — placeholders left out rather than guessed.
 ];
+
+function extractImage(item) {
+  return item.mediaThumbnail?.[0]?.$?.url || null;
+}
 
 async function getNews({ limit = 15 } = {}) {
   const results = await Promise.allSettled(
@@ -22,6 +34,7 @@ async function getNews({ limit = 15 } = {}) {
         link: item.link,
         publishedAt: item.pubDate || item.isoDate || null,
         summary: item.contentSnippet || null,
+        image: extractImage(item),
       }));
     })
   );
