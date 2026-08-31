@@ -31,6 +31,12 @@
     .news-item:first-child { border-top: none; }
     .news-item a { color: #0b6e4f; text-decoration: none; }
     .sighting { font-size: 0.9rem; padding: 4px 0; }
+    .traffic-item, .bus-item { padding: 8px 0; border-top: 1px solid #eee; font-size: 0.9rem; }
+    .traffic-item:first-child, .bus-item:first-child { border-top: none; }
+    .traffic-item .road, .bus-item .line { font-weight: 600; }
+    .traffic-item .desc, .bus-item .dest { color: #444; }
+    .bus-item .times { font-size: 0.8rem; color: #6b7280; }
+    .bus-item a { color: #0b6e4f; text-decoration: none; font-size: 0.8rem; }
     footer { text-align: center; padding: 20px; color: #888; font-size: 0.8rem; }
   </style>
 </head>
@@ -53,8 +59,8 @@
         app.innerHTML = renderWeather(data.weather)
           + renderNews(data.news)
           + renderWildlife(data.wildlife)
-          + renderPlaceholder('🚗 Traffic', data.traffic)
-          + renderPlaceholder('🚌 Live Buses', data.buses);
+          + renderTraffic(data.traffic)
+          + renderBuses(data.buses);
       } catch (err) {
         app.innerHTML = '<div class="card"><p class="unavailable">Could not reach the dashboard API: ' + err.message + '</p></div>';
       }
@@ -90,17 +96,58 @@
       return '<div class="card"><h2>🦡 Wildlife Sightings</h2>' + items + '</div>';
     }
 
-    function renderPlaceholder(title, section) {
+    // Shared not-configured / error / coming-online states for a section
+    // that hasn't got a live list to show. Returns null when the section
+    // is configured and should be rendered by its own list renderer instead.
+    function unavailableState(title, section) {
       if (section && section.configured === false) {
         return '<div class="card"><h2>' + title + '</h2><p class="unavailable">' + section.message + '</p></div>';
       }
       if (section && section.unavailable) {
         return '<div class="card"><h2>' + title + '</h2><p class="unavailable">Error: ' + section.error + '</p></div>';
       }
-      if (section && section.configured === true) {
-        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">Configured, but no live items to show right now</p></div>';
+      if (!section || section.configured !== true) {
+        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">Coming online once configured</p></div>';
       }
-      return '<div class="card"><h2>' + title + '</h2><p class="unavailable">Coming online once configured</p></div>';
+      return null;
+    }
+
+    function renderTraffic(t) {
+      const title = '🚗 Traffic';
+      const state = unavailableState(title, t);
+      if (state) return state;
+
+      if (!t.incidents || t.incidents.length === 0) {
+        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">No incidents reported right now — roads look clear</p></div>';
+      }
+      const items = t.incidents.slice(0, 10).map(i =>
+        '<div class="traffic-item"><span class="road">' + i.road + '</span><br>'
+        + '<span class="desc">' + i.description + '</span></div>'
+      ).join('');
+      return '<div class="card"><h2>' + title + '</h2>' + items + '</div>';
+    }
+
+    function renderBuses(b) {
+      const title = '🚌 Live Buses';
+      const state = unavailableState(title, b);
+      if (state) return state;
+
+      if (!b.vehicles || b.vehicles.length === 0) {
+        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">No active routes reported right now</p></div>';
+      }
+      const items = b.vehicles.slice(0, 15).map(v => {
+        const times = [
+          v.updatedTime ? 'updated ' + v.updatedTime : '',
+          v.arrivalTime ? 'due ' + v.arrivalTime : '',
+        ].filter(Boolean).join(' · ');
+        return '<div class="bus-item">'
+          + '<span class="line">' + v.line + '</span> '
+          + '<span class="dest">to ' + v.destination + '</span>'
+          + (times ? '<div class="times">' + times + '</div>' : '')
+          + (v.mapUrl ? '<a href="' + v.mapUrl + '" target="_blank">View on map</a>' : '')
+          + '</div>';
+      }).join('');
+      return '<div class="card"><h2>' + title + '</h2>' + items + '</div>';
     }
 
     loadDashboard();
