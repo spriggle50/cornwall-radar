@@ -10,7 +10,12 @@
 
 const TOMTOM_API_KEY = process.env.TOMTOM_API_KEY;
 
-async function getTrafficIncidents({ lat, lon, radiusMeters = 15000 } = {}) {
+// Same default as weather.js — Truro, Cornwall — used whenever no location
+// is specified (e.g. the free dashboard's default view with no saved location yet).
+const DEFAULT_LAT = 50.2632;
+const DEFAULT_LON = -5.0510;
+
+async function getTrafficIncidents({ lat = DEFAULT_LAT, lon = DEFAULT_LON, radiusMeters = 15000 } = {}) {
   if (!TOMTOM_API_KEY) {
     return {
       source: 'TomTom',

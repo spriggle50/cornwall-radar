@@ -94,6 +94,12 @@
       if (section && section.configured === false) {
         return '<div class="card"><h2>' + title + '</h2><p class="unavailable">' + section.message + '</p></div>';
       }
+      if (section && section.unavailable) {
+        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">Error: ' + section.error + '</p></div>';
+      }
+      if (section && section.configured === true) {
+        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">Configured, but no live items to show right now</p></div>';
+      }
       return '<div class="card"><h2>' + title + '</h2><p class="unavailable">Coming online once configured</p></div>';
     }
 
