@@ -204,6 +204,32 @@
     .overflow-status-badge.offline { background: #e5e7eb; color: #4b5563; }
     .overflow-watercourse { font-weight: 600; }
     .overflow-meta { color: var(--text-3); font-size: 0.78rem; margin-top: 2px; }
+
+    .subhead { font-size: 0.95rem; margin: 16px 0 4px; color: var(--text-2); }
+    .flood-warning { border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px; font-size: 0.86rem; }
+    .flood-warning.severe { background: #fee2e2; }
+    .flood-warning.alert { background: #fef3c7; }
+    .flood-warning.ended { background: var(--bg); color: var(--text-3); }
+    .flood-warning-title { font-weight: 700; }
+    .flood-warning-desc { margin-top: 2px; }
+    .flood-warning-message { margin-top: 4px; font-size: 0.8rem; color: var(--text-2); }
+    .level-row { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--border); font-size: 0.88rem; }
+    .level-row:first-child { border-top: none; padding-top: 2px; }
+    .level-label { font-weight: 600; }
+    .level-tidal-badge { font-size: 0.68rem; font-weight: 700; color: var(--accent-dark); background: var(--accent-soft); padding: 1px 7px; border-radius: 999px; }
+    .level-value { text-align: right; font-weight: 700; }
+    .level-meta { color: var(--text-3); font-size: 0.76rem; font-weight: 400; }
+
+    .bw-row { padding: 9px 0; border-top: 1px solid var(--border); font-size: 0.9rem; }
+    .bw-row:first-child { border-top: none; padding-top: 2px; }
+    .bw-name { font-weight: 600; }
+    .bw-badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; }
+    .bw-badge.excellent { background: #dcfce7; color: #15803d; }
+    .bw-badge.good { background: #dbeafe; color: #1d4ed8; }
+    .bw-badge.sufficient { background: #fef3c7; color: #b45309; }
+    .bw-badge.poor { background: #fee2e2; color: #b91c1c; }
+    .bw-badge.no-rating, .bw-badge.unknown { background: #e5e7eb; color: #4b5563; }
+    .bw-risk-badge { font-size: 0.76rem; font-weight: 700; color: #b45309; }
     .traffic-item, .bus-item { padding: 10px 0; border-top: 1px solid var(--border); font-size: 0.9rem; }
     .traffic-item:first-child, .bus-item:first-child { border-top: none; padding-top: 2px; }
     .traffic-item .road, .bus-item .line { font-weight: 700; }
@@ -612,6 +638,20 @@
         if (!so.dischargingCount) return 'No active discharges reported';
         return so.dischargingCount + ' outfall(s) currently discharging';
       }
+      if (key === 'floodMonitoring') {
+        const fm = d.floodMonitoring;
+        if (!fm || fm.unavailable) return 'Unavailable right now';
+        const active = (fm.warnings || []).filter(w => w.severityLevel !== 4);
+        if (active.length) return active.length + ' flood warning/alert(s) in Cornwall';
+        return 'No flood warnings — river & sea levels inside';
+      }
+      if (key === 'bathingWater') {
+        const bw = d.bathingWater;
+        if (!bw || bw.unavailable || !bw.sites || !bw.sites.length) return 'Unavailable right now';
+        const atRisk = bw.sites.filter(s => s.riskLevel && /increased|risk/i.test(s.riskLevel)).length;
+        if (atRisk) return atRisk + ' beach(es) with a raised pollution risk';
+        return bw.sites.length + ' Cornwall beaches monitored';
+      }
       return '';
     }
 
@@ -633,6 +673,10 @@
       { key: 'councilNews', icon: '🏛️', title: 'Cornwall Council News', dynamicPhoto: (d) => d.councilNews?.items?.[0]?.image || null },
       { key: 'trains', icon: '🚆', title: 'Train Times', photo: '/images/trains.jpg' },
       { key: 'stormOverflows', icon: '💧', title: 'Storm Overflows', photo: '/images/storm-overflow.jpg' },
+      { key: 'floodMonitoring', icon: '🌧️', title: 'River & Sea Levels', photo: '/images/river-levels.jpg' },
+      // No stock photo asset for this one — it's a plain data list with no
+      // natural thumbnail to borrow, so it falls back to the row-style card.
+      { key: 'bathingWater', icon: '🏖️', title: 'Bathing Water Quality' },
     ];
 
     function renderHubGrid() {
@@ -673,6 +717,8 @@
         councilNews: renderCouncilNewsDetail,
         trains: renderTrainsDetail,
         stormOverflows: renderStormOverflowsDetail,
+        floodMonitoring: renderFloodMonitoringDetail,
+        bathingWater: renderBathingWaterDetail,
       };
       const backBtn = '<button class="back-btn" onclick="closeDetail()">← Back</button>';
       // weatherDetails and eventsWhatson each draw from more than one
@@ -1372,6 +1418,78 @@
       stormOverflowMapInstance.setView(marker.getLatLng(), 13, { animate: true });
       marker.openPopup();
       document.getElementById('stormOverflowMap')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function warningSeverityClass(level) {
+      if (level === 1 || level === 2) return 'severe';
+      if (level === 3) return 'alert';
+      return 'ended';
+    }
+
+    function formatShortDateTime(iso) {
+      if (!iso) return null;
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return null;
+      return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderFloodMonitoringDetail(fm) {
+      const banner = '<img class="card-banner" src="/images/river-levels.jpg" alt="" />';
+      const title = '🌧️ River & Sea Levels';
+      if (!fm || fm.unavailable) {
+        return '<div class="card">' + banner + '<h2>' + title + '</h2><p class="unavailable">Unavailable right now</p></div>';
+      }
+      const activeWarnings = (fm.warnings || []).filter(w => w.severityLevel !== 4);
+      const warningsBlock = activeWarnings.length
+        ? activeWarnings.map(w => {
+            return '<div class="flood-warning ' + warningSeverityClass(w.severityLevel) + '">'
+              + '<div class="flood-warning-title">' + w.severity + (w.isTidal ? ' (tidal/coastal)' : '') + '</div>'
+              + '<div class="flood-warning-desc">' + (w.description || '') + '</div>'
+              + (w.message ? '<div class="flood-warning-message">' + w.message + '</div>' : '')
+              + '</div>';
+          }).join('')
+        : '<p class="section-subtitle">No flood warnings or alerts in force for Cornwall right now</p>';
+
+      const stations = fm.stations || [];
+      const stationRows = stations.length
+        ? stations.map(s => {
+            const value = s.latestValue != null ? s.latestValue + (s.unitName ? s.unitName : 'm') : 'No reading';
+            const when = formatShortDateTime(s.latestDateTime);
+            return '<div class="level-row">'
+              + '<div><span class="level-label">' + s.label + '</span>'
+              + (s.isTidal ? ' <span class="level-tidal-badge">Tidal</span>' : '')
+              + (s.town ? '<div class="level-meta">' + s.town + '</div>' : '')
+              + '</div>'
+              + '<div class="level-value">' + value + (when ? '<div class="level-meta">' + when + '</div>' : '') + '</div>'
+              + '</div>';
+          }).join('')
+        : '<p class="unavailable">No nearby level stations found</p>';
+
+      return '<div class="card">' + banner + '<h2>' + title + '</h2>'
+        + warningsBlock
+        + '<h3 class="subhead">Nearby water levels</h3>'
+        + stationRows
+        + '</div>';
+    }
+
+    function renderBathingWaterDetail(bw) {
+      const title = '🏖️ Bathing Water Quality';
+      if (!bw || bw.unavailable || !bw.sites || bw.sites.length === 0) {
+        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">No bathing water data available right now</p></div>';
+      }
+      const rows = bw.sites.map(s => {
+        const cls = s.classification ? s.classification.toLowerCase().replace(/[^a-z]/g, '-') : 'unknown';
+        const classBadge = '<span class="bw-badge ' + cls + '">' + (s.classification || 'No rating') + '</span>';
+        const riskBadge = (s.riskLevel && /increased|risk/i.test(s.riskLevel))
+          ? '<span class="bw-risk-badge">⚠️ ' + s.riskLevel + '</span>'
+          : '';
+        const mapLink = '<a href="https://www.google.com/maps?q=' + s.lat + ',' + s.lon + '" target="_blank">View location</a>';
+        return '<div class="bw-row">'
+          + '<span class="bw-name">' + s.name + '</span> ' + classBadge + ' ' + riskBadge
+          + '<div class="overflow-meta">' + mapLink + '</div>'
+          + '</div>';
+      }).join('');
+      return '<div class="card"><h2>' + title + '</h2><p class="section-subtitle">Environment Agency classifications — official ratings are assessed each bathing season; risk badges reflect current short-term pollution forecasts</p>' + rows + '</div>';
     }
 
     document.getElementById('scanBtn').addEventListener('click', scanLocation);
