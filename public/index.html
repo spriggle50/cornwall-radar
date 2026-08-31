@@ -181,6 +181,29 @@
     .sighting.clickable { cursor: pointer; margin: 0 -18px; padding: 6px 18px; transition: background 0.13s; }
     .sighting.clickable:hover { background: var(--accent-soft); }
     #wildlifeMap { width: 100%; height: 300px; border-radius: var(--radius-sm); margin-bottom: 8px; background: #e5e7eb; }
+    #stormOverflowMap { width: 100%; height: 300px; border-radius: var(--radius-sm); margin-bottom: 8px; background: #e5e7eb; }
+
+    .train-row { padding: 10px 0; border-top: 1px solid var(--border); font-size: 0.9rem; display: flex; justify-content: space-between; gap: 10px; }
+    .train-row:first-child { border-top: none; padding-top: 2px; }
+    .train-row .train-time { font-weight: 700; min-width: 46px; }
+    .train-row .train-dest { color: var(--text); }
+    .train-row .train-meta { color: var(--text-3); font-size: 0.78rem; }
+    .train-status { font-weight: 600; }
+    .train-status.on-time { color: #15803d; }
+    .train-status.delayed { color: #b45309; }
+    .train-status.cancelled { color: #b91c1c; }
+    .disruption-banner { background: #fef3c7; color: #92400e; padding: 9px 12px; border-radius: var(--radius-sm); font-size: 0.82rem; margin-bottom: 12px; }
+
+    .overflow-item { padding: 10px 0; border-top: 1px solid var(--border); font-size: 0.9rem; }
+    .overflow-item:first-child { border-top: none; padding-top: 2px; }
+    .overflow-item.clickable { cursor: pointer; margin: 0 -18px; padding: 10px 18px; transition: background 0.13s; }
+    .overflow-item.clickable:hover { background: var(--accent-soft); }
+    .overflow-status-badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; margin-right: 6px; }
+    .overflow-status-badge.discharging { background: #fee2e2; color: #b91c1c; }
+    .overflow-status-badge.not-discharging { background: #dcfce7; color: #15803d; }
+    .overflow-status-badge.offline { background: #e5e7eb; color: #4b5563; }
+    .overflow-watercourse { font-weight: 600; }
+    .overflow-meta { color: var(--text-3); font-size: 0.78rem; margin-top: 2px; }
     .traffic-item, .bus-item { padding: 10px 0; border-top: 1px solid var(--border); font-size: 0.9rem; }
     .traffic-item:first-child, .bus-item:first-child { border-top: none; padding-top: 2px; }
     .traffic-item .road, .bus-item .line { font-weight: 700; }
@@ -328,11 +351,13 @@
       .hub-grid { grid-template-columns: repeat(3, 1fr); }
       #trafficMap { height: 480px; }
       #wildlifeMap { height: 420px; }
+      #stormOverflowMap { height: 420px; }
     }
     @media (min-width: 1200px) {
       .location-wrap, main { max-width: 1140px; }
       #trafficMap { height: 560px; }
       #wildlifeMap { height: 480px; }
+      #stormOverflowMap { height: 480px; }
     }
   </style>
 </head>
@@ -375,6 +400,8 @@
     let trafficMapLayers = []; // index-matched to the incidents list, so a list click can find its map layer
     let wildlifeMapInstance = null;
     let wildlifeMapMarkers = []; // index-matched to the sightings list, same pattern as the traffic map
+    let stormOverflowMapInstance = null;
+    let stormOverflowMapMarkers = []; // index-matched to the outfalls list
 
     function updateLocationStatus() {
       const el = document.getElementById('locationStatus');
@@ -572,6 +599,19 @@
         if (!c || !c.items || !c.items.length) return 'No council news right now';
         return c.items[0].title;
       }
+      if (key === 'trains') {
+        const t = d.trains;
+        if (!t || t.unavailable) return 'Unavailable right now';
+        if (!t.services || !t.services.length) return t.station ? 'No departures listed for ' + t.station.name : 'No departures right now';
+        const next = t.services[0];
+        return t.station.name + ': ' + next.scheduledTime + ' to ' + (next.destination || '?');
+      }
+      if (key === 'stormOverflows') {
+        const so = d.stormOverflows;
+        if (!so || so.unavailable) return 'Unavailable right now';
+        if (!so.dischargingCount) return 'No active discharges reported';
+        return so.dischargingCount + ' outfall(s) currently discharging';
+      }
       return '';
     }
 
@@ -591,6 +631,8 @@
       // Same dynamic-photo trick as Sport — no stock asset for the council's
       // own news feed, so the top story's own thumbnail is borrowed instead.
       { key: 'councilNews', icon: '🏛️', title: 'Cornwall Council News', dynamicPhoto: (d) => d.councilNews?.items?.[0]?.image || null },
+      { key: 'trains', icon: '🚆', title: 'Train Times', photo: '/images/trains.jpg' },
+      { key: 'stormOverflows', icon: '💧', title: 'Storm Overflows', photo: '/images/storm-overflow.jpg' },
     ];
 
     function renderHubGrid() {
@@ -629,6 +671,8 @@
         eventsWhatson: renderEventsWhatsonDetail,
         sport: renderSportDetail,
         councilNews: renderCouncilNewsDetail,
+        trains: renderTrainsDetail,
+        stormOverflows: renderStormOverflowsDetail,
       };
       const backBtn = '<button class="back-btn" onclick="closeDetail()">← Back</button>';
       // weatherDetails and eventsWhatson each draw from more than one
@@ -640,12 +684,14 @@
 
       if (key === 'traffic') initTrafficMap(dashboardData ? dashboardData.traffic : null);
       if (key === 'wildlife') initWildlifeMap(dashboardData ? dashboardData.wildlife : null);
+      if (key === 'stormOverflows') initStormOverflowMap(dashboardData ? dashboardData.stormOverflows : null);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     function closeDetail() {
       if (trafficMapInstance) { trafficMapInstance.remove(); trafficMapInstance = null; }
       if (wildlifeMapInstance) { wildlifeMapInstance.remove(); wildlifeMapInstance = null; }
+      if (stormOverflowMapInstance) { stormOverflowMapInstance.remove(); stormOverflowMapInstance = null; }
       document.getElementById('detailPanel').hidden = true;
       document.getElementById('detailPanel').innerHTML = '';
       document.getElementById('hubGrid').hidden = false;
@@ -801,9 +847,16 @@
       sightings.forEach((s, idx) => {
         if (s.lat == null || s.lon == null) return;
         const label = '<strong>' + s.species + '</strong>' + (s.date ? '<br>' + s.date : '') + (s.locality ? '<br>' + s.locality : '');
-        wildlifeMapMarkers[idx] = L.circleMarker([s.lat, s.lon], {
+        const marker = L.circleMarker([s.lat, s.lon], {
           radius: 7, color: '#15803d', fillColor: '#22c55e', fillOpacity: 0.85,
         }).addTo(map).bindPopup(label);
+        // Hover shows which bird (etc.) was spotted there without needing a
+        // click first; a real click (from the marker itself, or from
+        // focusWildlifeSighting below) still opens/keeps the popup so it
+        // doesn't vanish the moment the mouse moves off.
+        marker.on('mouseover', () => marker.openPopup());
+        marker.on('mouseout', () => marker.closePopup());
+        wildlifeMapMarkers[idx] = marker;
       });
 
       if (located.length > 1) {
@@ -1179,6 +1232,146 @@
           + '</div></a>';
       }).join('');
       return '<div class="card"><h2>' + title + '</h2><div class="feed-grid">' + cards + '</div></div>';
+    }
+
+    function trainStatusMarkup(s) {
+      if (s.isCancelled) {
+        return '<span class="train-status cancelled">Cancelled' + (s.cancelReason ? ' — ' + s.cancelReason : '') + '</span>';
+      }
+      if (s.expected && s.expected !== 'On time' && s.expected !== s.scheduledTime) {
+        return '<span class="train-status delayed">Exp ' + s.expected + (s.delayReason ? ' — ' + s.delayReason : '') + '</span>';
+      }
+      return '<span class="train-status on-time">On time</span>';
+    }
+
+    function renderTrainsDetail(t) {
+      const title = '🚆 Train Times';
+      const state = unavailableState(title, t);
+      if (state) return state;
+
+      const banner = '<img class="card-banner" src="/images/trains.jpg" alt="" />';
+      const subtitle = t.station
+        ? '<p class="section-subtitle">' + t.station.name + ' station (' + t.station.crs + ')' + (t.station.distanceKm != null ? ' — ' + t.station.distanceKm + 'km away' : '') + '</p>'
+        : '';
+      const disruption = (t.disruptionMessages && t.disruptionMessages.length)
+        ? '<div class="disruption-banner">' + t.disruptionMessages.join('<br>') + '</div>'
+        : '';
+
+      if (!t.services || t.services.length === 0) {
+        return '<div class="card">' + banner + '<h2>' + title + '</h2>' + subtitle + disruption + '<p class="unavailable">No departures listed right now</p></div>';
+      }
+      const rows = t.services.slice(0, 15).map(s => {
+        return '<div class="train-row">'
+          + '<div><span class="train-time">' + (s.scheduledTime || '--:--') + '</span> '
+          + '<span class="train-dest">to ' + (s.destination || 'Unknown') + '</span>'
+          + (s.platform ? '<div class="train-meta">Platform ' + s.platform + (s.operator ? ' · ' + s.operator : '') + '</div>' : (s.operator ? '<div class="train-meta">' + s.operator + '</div>' : ''))
+          + '</div>'
+          + trainStatusMarkup(s)
+          + '</div>';
+      }).join('');
+      return '<div class="card">' + banner + '<h2>' + title + '</h2>' + subtitle + disruption + rows + '</div>';
+    }
+
+    function overflowStatusClass(status) {
+      if (status === 1) return 'discharging';
+      if (status === 0) return 'not-discharging';
+      return 'offline';
+    }
+
+    function formatOverflowTime(iso) {
+      if (!iso) return null;
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return null;
+      return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderStormOverflowsDetail(so) {
+      const banner = '<img class="card-banner" src="/images/storm-overflow.jpg" alt="" />';
+      const title = '💧 Storm Overflows';
+      if (!so || so.unavailable || !so.outfalls || so.outfalls.length === 0) {
+        return '<div class="card">' + banner + '<h2>' + title + '</h2><p class="unavailable">No storm overflow data available right now</p></div>';
+      }
+      const summary = '<p class="section-subtitle">' + so.dischargingCount + ' of ' + so.outfalls.length + ' Cornwall outfalls currently discharging · South West Water, near real-time</p>';
+      const anyLocated = so.outfalls.some(o => o.lat != null && o.lon != null);
+      const mapBlock = anyLocated
+        ? '<div id="stormOverflowMap"></div><p class="map-legend">🔴 discharging · 🟢 not discharging · ⚪ offline / no data — click an outfall below to jump to it</p>'
+        : '';
+      // Indexed to match initStormOverflowMap's own marker array exactly
+      // (same source array, same order), same click-to-focus pattern as
+      // traffic and wildlife above.
+      const items = so.outfalls.map((o, idx) => {
+        const cls = overflowStatusClass(o.status);
+        const hasCoords = o.lat != null && o.lon != null;
+        const rowCls = 'overflow-item' + (hasCoords ? ' clickable' : '');
+        const onclick = hasCoords ? ' onclick="focusStormOverflow(' + idx + ')"' : '';
+        const pinLink = hasCoords ? ' <span class="traffic-item-link">📍 Show on map</span>' : '';
+        const timing = o.status === 1 && o.latestEventStart
+          ? 'Started discharging ' + formatOverflowTime(o.latestEventStart)
+          : (o.latestEventEnd ? 'Last discharge ended ' + formatOverflowTime(o.latestEventEnd) : 'No recent discharge on record');
+        const mapLink = hasCoords
+          ? ' <a href="https://www.google.com/maps?q=' + o.lat + ',' + o.lon + '" target="_blank">View location</a>'
+          : '';
+        return '<div class="' + rowCls + '"' + onclick + '>'
+          + '<span class="overflow-status-badge ' + cls + '">' + o.statusLabel + '</span>'
+          + '<span class="overflow-watercourse">' + (o.waterCourse || o.id || 'Unnamed outfall') + '</span>'
+          + pinLink
+          + '<div class="overflow-meta">' + timing + mapLink + '</div>'
+          + '</div>';
+      }).join('');
+      return '<div class="card">' + banner + '<h2>' + title + '</h2>' + summary + mapBlock + items + '</div>';
+    }
+
+    // Same Leaflet setup as initWildlifeMap — every outfall already comes
+    // with a lat/lon from South West Water's own feed, so points on a map
+    // straight away, colour-coded to match the status badges in the list.
+    function initStormOverflowMap(so) {
+      const mapEl = document.getElementById('stormOverflowMap');
+      if (!mapEl) return;
+      if (typeof L === 'undefined') {
+        mapEl.outerHTML = '<p class="unavailable">Map could not load (Leaflet failed to load from its CDN) — the outfall list below is still live.</p>';
+        return;
+      }
+      if (stormOverflowMapInstance) { stormOverflowMapInstance.remove(); stormOverflowMapInstance = null; }
+
+      const outfalls = so && so.outfalls ? so.outfalls : [];
+      const located = outfalls.filter(o => o.lat != null && o.lon != null);
+      const center = located.length ? { lat: located[0].lat, lon: located[0].lon } : { lat: 50.2632, lon: -5.0510 };
+
+      const map = L.map('stormOverflowMap').setView([center.lat, center.lon], located.length ? 10 : 9);
+      stormOverflowMapInstance = map;
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19,
+      }).addTo(map);
+
+      const colors = { 1: { color: '#b91c1c', fill: '#ef4444' }, 0: { color: '#15803d', fill: '#22c55e' } };
+      const offlineColor = { color: '#6b7280', fill: '#9ca3af' };
+
+      stormOverflowMapMarkers = [];
+      outfalls.forEach((o, idx) => {
+        if (o.lat == null || o.lon == null) return;
+        const c = colors[o.status] || offlineColor;
+        const label = '<strong>' + o.statusLabel + '</strong><br>' + (o.waterCourse || o.id || '');
+        const marker = L.circleMarker([o.lat, o.lon], { radius: 7, color: c.color, fillColor: c.fill, fillOpacity: 0.85 }).addTo(map).bindPopup(label);
+        marker.on('mouseover', () => marker.openPopup());
+        marker.on('mouseout', () => marker.closePopup());
+        stormOverflowMapMarkers[idx] = marker;
+      });
+
+      if (located.length > 1) {
+        const bounds = L.latLngBounds(located.map(o => [o.lat, o.lon]));
+        map.fitBounds(bounds, { padding: [24, 24], maxZoom: 13 });
+      }
+    }
+
+    function focusStormOverflow(idx) {
+      if (!stormOverflowMapInstance) return;
+      const marker = stormOverflowMapMarkers[idx];
+      if (!marker) return;
+      stormOverflowMapInstance.setView(marker.getLatLng(), 13, { animate: true });
+      marker.openPopup();
+      document.getElementById('stormOverflowMap')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     document.getElementById('scanBtn').addEventListener('click', scanLocation);

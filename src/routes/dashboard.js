@@ -13,6 +13,8 @@ const { getWhatsOn } = require('../fetchers/whatson');
 const { getEvents } = require('../fetchers/events');
 const { getSport } = require('../fetchers/sport');
 const { getCouncilNews } = require('../fetchers/councilnews');
+const { getTrainDepartures } = require('../fetchers/trains');
+const { getStormOverflows } = require('../fetchers/stormOverflows');
 
 // Same default as weather.js — Truro, Cornwall — used whenever no location
 // is specified. Pollen/Google Weather need an actual lat/lon (unlike the
@@ -31,7 +33,7 @@ router.get('/', async (req, res) => {
   const effectiveLat = lat != null ? lat : DEFAULT_LAT;
   const effectiveLon = lon != null ? lon : DEFAULT_LON;
 
-  const [weather, wildlife, news, traffic, buses, tides, pollen, weatherDetail, whatson, events, sport, councilNews] = await Promise.allSettled([
+  const [weather, wildlife, news, traffic, buses, tides, pollen, weatherDetail, whatson, events, sport, councilNews, trains, stormOverflows] = await Promise.allSettled([
     getWeather(lat, lon),
     getRecentSightings(),
     getNews(),
@@ -44,6 +46,8 @@ router.get('/', async (req, res) => {
     getEvents({ lat: effectiveLat, lon: effectiveLon }),
     getSport(),
     getCouncilNews(),
+    getTrainDepartures({ lat: effectiveLat, lon: effectiveLon }),
+    getStormOverflows(),
   ]);
 
   const unwrap = (result, label) =>
@@ -64,6 +68,8 @@ router.get('/', async (req, res) => {
     events: unwrap(events, 'events'),
     sport: unwrap(sport, 'sport'),
     councilNews: unwrap(councilNews, 'councilNews'),
+    trains: unwrap(trains, 'trains'),
+    stormOverflows: unwrap(stormOverflows, 'stormOverflows'),
     generatedAt: new Date().toISOString(),
   });
 });
