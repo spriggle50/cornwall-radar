@@ -548,6 +548,11 @@
         }
         return 'Pollen count & extended forecast';
       }
+      if (key === 'sport') {
+        const s = d.sport;
+        if (!s || !s.items || !s.items.length) return 'No sport stories right now';
+        return s.items[0].title;
+      }
       return '';
     }
 
@@ -559,15 +564,21 @@
       { key: 'wildlife', icon: '🦡', title: 'Wildlife', photo: '/images/wildlife-hero.jpg' },
       { key: 'eventsWhatson', icon: '🎉', title: "Events & What's On", photo: '/images/events.jpg' },
       { key: 'news', icon: '📰', title: 'Cornwall News', photo: '/images/community.jpg' },
+      // No stock photo asset for sport — instead of picking an arbitrary
+      // static image, borrow whatever thumbnail the top story itself
+      // carries (the feed provides one for most stories), same trick the
+      // reference implementation uses for its own photo-forward hub cards.
+      { key: 'sport', icon: '⚽', title: 'Cornwall Sport', dynamicPhoto: (d) => d.sport?.items?.[0]?.image || null },
     ];
 
     function renderHubGrid() {
       const grid = document.getElementById('hubGrid');
       grid.innerHTML = HUB_SECTIONS.map(s => {
         const preview = hubPreview(s.key);
-        if (s.photo) {
+        const photo = s.photo || (s.dynamicPhoto && dashboardData ? s.dynamicPhoto(dashboardData) : null);
+        if (photo) {
           return '<button class="hub-card" onclick="openDetail(\'' + s.key + '\')">'
-            + '<img class="hub-card-photo" src="' + s.photo + '" alt="" />'
+            + '<img class="hub-card-photo" src="' + photo + '" alt="" />'
             + '<div class="hub-card-body"><div class="hub-card-title">' + s.icon + ' ' + s.title + '</div>'
             + '<div class="hub-card-preview">' + preview + '</div></div>'
             + '</button>';
@@ -594,6 +605,7 @@
         news: renderNewsDetail,
         weatherDetails: renderWeatherDetailsDetail,
         eventsWhatson: renderEventsWhatsonDetail,
+        sport: renderSportDetail,
       };
       const backBtn = '<button class="back-btn" onclick="closeDetail()">← Back</button>';
       // weatherDetails and eventsWhatson each draw from more than one
@@ -979,13 +991,31 @@
       if (!n || !n.items || n.items.length === 0) {
         return '<div class="card"><h2>' + title + '</h2><p class="unavailable">No stories available right now</p></div>';
       }
-      // Photo-card grid, matching the What's On feed — BBC's RSS carries a
-      // thumbnail per story (see news.js), so this no longer needs to fall
-      // back to a plain text list the way it used to.
+      // Photo-card grid, matching the What's On feed — Cornwall Live's RSS
+      // carries a thumbnail per story (see news.js), so this no longer
+      // needs to fall back to a plain text list the way it used to.
       const cards = n.items.slice(0, 15).map(i => {
         const img = i.image
           ? '<img class="feed-card-img" src="' + i.image + '" alt="" loading="lazy" />'
           : '<div class="feed-card-img-placeholder">📰</div>';
+        return '<a class="feed-card" href="' + i.link + '" target="_blank">'
+          + img
+          + '<div class="feed-card-body">'
+          + '<div class="feed-card-title">' + i.title + '</div>'
+          + '</div></a>';
+      }).join('');
+      return '<div class="card"><h2>' + title + '</h2><div class="feed-grid">' + cards + '</div></div>';
+    }
+
+    function renderSportDetail(s) {
+      const title = '⚽ Cornwall Sport';
+      if (!s || !s.items || s.items.length === 0) {
+        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">No sport stories available right now</p></div>';
+      }
+      const cards = s.items.slice(0, 15).map(i => {
+        const img = i.image
+          ? '<img class="feed-card-img" src="' + i.image + '" alt="" loading="lazy" />'
+          : '<div class="feed-card-img-placeholder">⚽</div>';
         return '<a class="feed-card" href="' + i.link + '" target="_blank">'
           + img
           + '<div class="feed-card-body">'

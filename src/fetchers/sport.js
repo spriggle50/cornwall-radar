@@ -1,17 +1,12 @@
-// Cornwall News fetcher — Cornwall Live's own general news RSS feed. Free,
-// no API key required. Confirmed real and working at this exact path by a
-// separately-run project; adapted here as Cornwall Radar's own standalone
-// fetcher. (An earlier version of this file guessed at a generic BBC feed
-// as a placeholder before the real source was confirmed — this replaces
-// that guess entirely rather than aggregating the two.)
+// Cornwall Sport fetcher — Cornwall Live's dedicated sport RSS feed. Free,
+// no API key required, same publisher/terms as the general news feed
+// (news.js), just scoped to their sport section. Confirmed real and
+// working at this exact path by a separately-run project.
 
 const Parser = require('rss-parser');
 const parser = new Parser({
   timeout: 8000,
   headers: { 'User-Agent': 'CornwallRadar/1.0 (local conditions dashboard)' },
-  // Cornwall Live's feed carries a thumbnail per story via the standard
-  // Media RSS namespace — rss-parser only exposes it if told to look,
-  // same fix applied to whatson.js and sport.js.
   customFields: {
     item: [
       ['media:content', 'mediaContent', { keepArray: true }],
@@ -20,13 +15,13 @@ const parser = new Parser({
   },
 });
 
-const FEED_URL = 'https://www.cornwalllive.com/?service=rss';
+const FEED_URL = 'https://www.cornwalllive.com/sport/?service=rss';
 
 function extractImage(item) {
   return item.mediaContent?.[0]?.$?.url || item.mediaThumbnail?.[0]?.$?.url || null;
 }
 
-async function getNews({ limit = 15 } = {}) {
+async function getSport({ limit = 15 } = {}) {
   const parsed = await parser.parseURL(FEED_URL);
   const items = (parsed.items || []).slice(0, limit).map((item) => ({
     title: item.title || '',
@@ -36,10 +31,10 @@ async function getNews({ limit = 15 } = {}) {
   }));
 
   return {
-    source: 'Cornwall Live',
+    source: 'Cornwall Live Sport',
     items,
     fetchedAt: new Date().toISOString(),
   };
 }
 
-module.exports = { getNews };
+module.exports = { getSport };
