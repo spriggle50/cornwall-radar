@@ -181,7 +181,7 @@
       width: 100%; height: 110px; object-fit: cover; border-radius: var(--radius-sm);
       margin-bottom: 14px; display: block;
     }
-    #trafficMap { width: 100%; height: 280px; border-radius: var(--radius-sm); margin-bottom: 12px; background: #e5e7eb; }
+    #trafficMap { width: 100%; height: 340px; border-radius: var(--radius-sm); margin-bottom: 12px; background: #e5e7eb; }
     .map-legend { font-size: 0.72rem; color: var(--text-3); margin: -6px 0 14px; }
 
     .tide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
@@ -255,6 +255,21 @@
     }
 
     footer { text-align: center; padding: 24px 16px; color: var(--text-3); font-size: 0.78rem; }
+
+    /* ── Wider screens: the whole layout was tuned mobile-first at 640px,
+       which leaves a lot of dead space either side on a desktop browser.
+       From ~860px up, let the centre column breathe — most noticeably the
+       traffic map, which goes from a small strip to something you can
+       actually read street names on. */
+    @media (min-width: 860px) {
+      .location-wrap, main { max-width: 960px; }
+      .hub-grid { grid-template-columns: repeat(3, 1fr); }
+      #trafficMap { height: 480px; }
+    }
+    @media (min-width: 1200px) {
+      .location-wrap, main { max-width: 1140px; }
+      #trafficMap { height: 560px; }
+    }
   </style>
 </head>
 <body>
