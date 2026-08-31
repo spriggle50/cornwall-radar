@@ -40,6 +40,12 @@ async function getRecentSightings({ limit = 20 } = {}) {
       lon: r.decimalLongitude,
       locality: r.locality || r.municipality || null,
       recordedBy: r.recordedBy || null,
+      // Both come straight from GBIF's own record — used to link out to
+      // GBIF's species page (background/photos/taxonomy) and to this
+      // specific occurrence record (who logged it, exact source), rather
+      // than leaving a sighting as unclickable plain text.
+      gbifOccurrenceId: r.key || null,
+      gbifSpeciesKey: r.speciesKey || null,
     })),
     fetchedAt: new Date().toISOString(),
   };

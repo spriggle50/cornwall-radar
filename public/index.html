@@ -175,12 +175,18 @@
     .news-item a { color: var(--text); text-decoration: none; font-weight: 500; }
     .news-item a:hover { color: var(--accent-dark); }
     .sighting { font-size: 0.9rem; padding: 6px 0; }
+    .sighting a { color: var(--accent-dark); text-decoration: none; font-weight: 600; }
+    .sighting a:hover { text-decoration: underline; }
+    .sighting-record-link { display: block; font-size: 0.76rem; margin-top: 2px; }
     .traffic-item, .bus-item { padding: 10px 0; border-top: 1px solid var(--border); font-size: 0.9rem; }
     .traffic-item:first-child, .bus-item:first-child { border-top: none; padding-top: 2px; }
     .traffic-item .road, .bus-item .line { font-weight: 700; }
     .traffic-item .desc, .bus-item .dest { color: var(--text-2); }
     .bus-item .times { font-size: 0.8rem; color: var(--text-3); margin-top: 2px; }
     .bus-item a { color: var(--accent-dark); text-decoration: none; font-size: 0.8rem; font-weight: 600; }
+    .traffic-item.clickable { cursor: pointer; margin: 0 -18px; padding: 10px 18px; transition: background 0.13s; }
+    .traffic-item.clickable:hover { background: var(--accent-soft); }
+    .traffic-item-link { font-size: 0.76rem; font-weight: 700; color: var(--accent-dark); }
     .card-banner {
       /* Same reasoning as .hub-card-photo above: a fixed pixel height crops
          down to almost nothing once the centre column is allowed to stretch
@@ -361,6 +367,7 @@
     let currentLocation = loadSavedLocation(); // { lat, lon, label } or null = Cornwall-wide default
     let dashboardData = null; // last-fetched /api/dashboard payload
     let trafficMapInstance = null;
+    let trafficMapLayers = []; // index-matched to the incidents list, so a list click can find its map layer
 
     function updateLocationStatus() {
       const el = document.getElementById('locationStatus');
@@ -553,6 +560,11 @@
         if (!s || !s.items || !s.items.length) return 'No sport stories right now';
         return s.items[0].title;
       }
+      if (key === 'councilNews') {
+        const c = d.councilNews;
+        if (!c || !c.items || !c.items.length) return 'No council news right now';
+        return c.items[0].title;
+      }
       return '';
     }
 
@@ -569,6 +581,9 @@
       // carries (the feed provides one for most stories), same trick the
       // reference implementation uses for its own photo-forward hub cards.
       { key: 'sport', icon: '⚽', title: 'Cornwall Sport', dynamicPhoto: (d) => d.sport?.items?.[0]?.image || null },
+      // Same dynamic-photo trick as Sport — no stock asset for the council's
+      // own news feed, so the top story's own thumbnail is borrowed instead.
+      { key: 'councilNews', icon: '🏛️', title: 'Cornwall Council News', dynamicPhoto: (d) => d.councilNews?.items?.[0]?.image || null },
     ];
 
     function renderHubGrid() {
@@ -606,6 +621,7 @@
         weatherDetails: renderWeatherDetailsDetail,
         eventsWhatson: renderEventsWhatsonDetail,
         sport: renderSportDetail,
+        councilNews: renderCouncilNewsDetail,
       };
       const backBtn = '<button class="back-btn" onclick="closeDetail()">← Back</button>';
       // weatherDetails and eventsWhatson each draw from more than one
@@ -656,9 +672,15 @@
       if (!t.incidents || t.incidents.length === 0) {
         return '<div class="card"><h2>' + title + '</h2>' + subtitle + notes + mapBlock + '<p class="unavailable">No incidents reported right now — roads look clear</p></div>';
       }
-      const items = t.incidents.slice(0, 20).map(i => {
+      // Indices here line up 1:1 with the (unsliced) array initTrafficMap
+      // builds its markers/lines from below, so a click can jump straight
+      // to that incident's own layer on the map above.
+      const items = t.incidents.slice(0, 20).map((i, idx) => {
         const badge = i.kind === 'closure' ? '🟠 Closure' : '🔴 Incident';
-        return '<div class="traffic-item"><span class="road">' + badge + ' · ' + i.road + '</span><br>'
+        const cls = 'traffic-item' + (i.coordinates ? ' clickable' : '');
+        const onclick = i.coordinates ? ' onclick="focusTrafficIncident(' + idx + ')"' : '';
+        const mapLink = i.coordinates ? ' <span class="traffic-item-link">📍 Show on map</span>' : '';
+        return '<div class="' + cls + '"' + onclick + '><span class="road">' + badge + ' · ' + i.road + mapLink + '</span><br>'
           + '<span class="desc">' + i.description + '</span></div>';
       }).join('');
       return '<div class="card"><h2>' + title + '</h2>' + subtitle + notes + mapBlock + items + '</div>';
@@ -702,18 +724,38 @@
         }
       } catch (e) { /* flow overlay is a bonus layer — map still works without it */ }
 
-      (t && t.incidents ? t.incidents : []).forEach((inc) => {
+      // Indexed to match renderTrafficDetail's list exactly (same source
+      // array, same order) so a click on a list row can look its marker/
+      // line straight up here and jump the map to it.
+      trafficMapLayers = [];
+      (t && t.incidents ? t.incidents : []).forEach((inc, idx) => {
         if (!inc.coordinates) return;
         const color = inc.kind === 'closure' ? '#ea580c' : '#dc2626'; // orange for National Highways closures, red for TomTom incidents
         const label = (inc.kind === 'closure' ? 'Closure: ' : 'Incident: ') + inc.description;
         if (inc.geometryType === 'LineString') {
           const latlngs = inc.coordinates.map((c) => [c[1], c[0]]);
-          L.polyline(latlngs, { color, weight: 4 }).addTo(map).bindPopup(label);
+          trafficMapLayers[idx] = L.polyline(latlngs, { color, weight: 4 }).addTo(map).bindPopup(label);
         } else {
           const [lon, lat] = inc.coordinates;
-          L.circleMarker([lat, lon], { radius: 8, color, fillColor: color, fillOpacity: 0.8 }).addTo(map).bindPopup(label);
+          trafficMapLayers[idx] = L.circleMarker([lat, lon], { radius: 8, color, fillColor: color, fillOpacity: 0.8 }).addTo(map).bindPopup(label);
         }
       });
+    }
+
+    // Called when a traffic list row is clicked — pans/zooms the map to
+    // that incident's own marker or line and pops its label open, instead
+    // of leaving the map and the list feeling like two disconnected things.
+    function focusTrafficIncident(idx) {
+      if (!trafficMapInstance) return;
+      const layer = trafficMapLayers[idx];
+      if (!layer) return;
+      if (layer.getLatLng) {
+        trafficMapInstance.setView(layer.getLatLng(), 14, { animate: true });
+      } else if (layer.getBounds) {
+        trafficMapInstance.fitBounds(layer.getBounds(), { maxZoom: 15 });
+      }
+      layer.openPopup();
+      document.getElementById('trafficMap')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     function renderBusesDetail(b) {
@@ -771,9 +813,23 @@
       if (!wl || wl.unavailable || !wl.sightings || wl.sightings.length === 0) {
         return '<div class="card">' + banner + '<h2>🦡 Wildlife Sightings</h2><p class="unavailable">No recent sightings available right now</p></div>';
       }
-      const items = wl.sightings.slice(0, 15).map(s =>
-        '<div class="sighting">' + s.species + (s.locality ? ' — ' + s.locality : '') + '</div>'
-      ).join('');
+      const items = wl.sightings.slice(0, 15).map(s => {
+        // Species name links to GBIF's species page (background, photos,
+        // taxonomy) when GBIF gave us one; the location links to a map of
+        // exactly where this sighting was logged. Neither existed before —
+        // a sighting with no coordinates and no species key just stays as
+        // plain text rather than link to nowhere.
+        const speciesLabel = s.gbifSpeciesKey
+          ? '<a href="https://www.gbif.org/species/' + s.gbifSpeciesKey + '" target="_blank">' + s.species + '</a>'
+          : s.species;
+        const mapLink = (s.lat != null && s.lon != null)
+          ? ' — <a href="https://www.google.com/maps?q=' + s.lat + ',' + s.lon + '" target="_blank">' + (s.locality || 'View location') + '</a>'
+          : (s.locality ? ' — ' + s.locality : '');
+        const recordLink = s.gbifOccurrenceId
+          ? ' <a class="sighting-record-link" href="https://www.gbif.org/occurrence/' + s.gbifOccurrenceId + '" target="_blank">Sighting record ↗</a>'
+          : '';
+        return '<div class="sighting">' + speciesLabel + mapLink + recordLink + '</div>';
+      }).join('');
       return '<div class="card">' + banner + '<h2>🦡 Wildlife Sightings</h2>' + items + '</div>';
     }
 
@@ -1016,6 +1072,24 @@
         const img = i.image
           ? '<img class="feed-card-img" src="' + i.image + '" alt="" loading="lazy" />'
           : '<div class="feed-card-img-placeholder">⚽</div>';
+        return '<a class="feed-card" href="' + i.link + '" target="_blank">'
+          + img
+          + '<div class="feed-card-body">'
+          + '<div class="feed-card-title">' + i.title + '</div>'
+          + '</div></a>';
+      }).join('');
+      return '<div class="card"><h2>' + title + '</h2><div class="feed-grid">' + cards + '</div></div>';
+    }
+
+    function renderCouncilNewsDetail(cn) {
+      const title = '🏛️ Cornwall Council News';
+      if (!cn || !cn.items || cn.items.length === 0) {
+        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">No council news available right now</p></div>';
+      }
+      const cards = cn.items.slice(0, 15).map(i => {
+        const img = i.image
+          ? '<img class="feed-card-img" src="' + i.image + '" alt="" loading="lazy" />'
+          : '<div class="feed-card-img-placeholder">🏛️</div>';
         return '<a class="feed-card" href="' + i.link + '" target="_blank">'
           + img
           + '<div class="feed-card-body">'
