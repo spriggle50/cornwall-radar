@@ -67,6 +67,10 @@ async function getTrafficIncidents({ lat = DEFAULT_LAT, lon = DEFAULT_LON, radiu
         road: roads || p.from || 'Local road',
         description: event?.description || (p.from && p.to ? `${p.from} to ${p.to}` : 'Incident reported'),
         severity: p.magnitudeOfDelay != null ? p.magnitudeOfDelay : null, // 0=unknown,1=minor,2=moderate,3=major,4=undefined
+        // GeoJSON: Point -> [lon, lat]; LineString -> a road-shaped path of
+        // [lon, lat] pairs. Kept in GeoJSON's own lon-then-lat order here;
+        // the frontend map flips it to Leaflet's lat-then-lon order.
+        geometryType: inc.geometry?.type || null,
         coordinates: inc.geometry?.coordinates || null,
       };
     })
@@ -79,6 +83,7 @@ async function getTrafficIncidents({ lat = DEFAULT_LAT, lon = DEFAULT_LON, radiu
     source: 'TomTom',
     configured: true,
     searchedLocation: town ? `within ${Math.round(radiusMeters / 1000)}km of ${town.name}` : 'within range of the searched point',
+    center: { lat, lon },
     incidents,
     fetchedAt: new Date().toISOString(),
   };

@@ -24,6 +24,15 @@ app.use('/api/dashboard', dashboardRoute);
 
 // GET /api/geocode?q=<town or postcode> — turns typed text into a lat/lon
 // so the location search bar can request conditions for a specific place.
+// Exposes the TomTom key so the traffic map's tile layer (flow speed) can be
+// requested directly by the browser — this is TomTom's intended usage for
+// map tiles (the key is scoped/rate-limited on TomTom's own dashboard, not
+// meant to be hidden from the client for this purpose).
+app.get('/api/tomtom-key', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ key: process.env.TOMTOM_API_KEY || null });
+});
+
 app.get('/api/geocode', async (req, res) => {
   try {
     const result = await geocodeLocation(req.query.q);

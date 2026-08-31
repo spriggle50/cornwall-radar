@@ -6,6 +6,8 @@
   <title>Cornwall Radar</title>
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#0b6e4f" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     :root { color-scheme: light; }
     * { box-sizing: border-box; }
@@ -13,14 +15,10 @@
       margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: #f4f7f5; color: #1a1a1a;
     }
-    header {
-      background: #0b6e4f; color: #fff; padding: 20px 16px;
-    }
+    header { background: #0b6e4f; color: #fff; padding: 20px 16px; }
     header h1 { margin: 0; font-size: 1.4rem; }
     header p { margin: 4px 0 0; opacity: 0.85; font-size: 0.9rem; }
-    .location-bar {
-      display: flex; gap: 8px; padding: 12px 16px; background: #095c40;
-    }
+    .location-bar { display: flex; gap: 8px; padding: 12px 16px; background: #095c40; }
     .location-bar input {
       flex: 1; padding: 9px 12px; border-radius: 8px; border: none;
       font-size: 0.9rem; min-width: 0;
@@ -30,13 +28,12 @@
       color: #0b6e4f; font-weight: 600; font-size: 0.85rem; cursor: pointer; white-space: nowrap;
     }
     .location-bar button:active { opacity: 0.85; }
-    .location-status {
-      padding: 8px 16px; font-size: 0.8rem; color: #0b6e4f; background: #e3f3ec;
-    }
+    .location-status { padding: 8px 16px; font-size: 0.8rem; color: #0b6e4f; background: #e3f3ec; }
     .location-status .change-link { color: #0b6e4f; text-decoration: underline; cursor: pointer; background: none; border: none; font: inherit; padding: 0; margin-left: 6px; }
     .location-error { color: #b91c1c; }
     main { padding: 12px; max-width: 640px; margin: 0 auto; }
     .section-subtitle { font-size: 0.78rem; color: #6b7280; margin: -4px 0 10px; }
+
     .card {
       background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.08);
@@ -45,6 +42,34 @@
     .card .stale { font-size: 0.8rem; color: #b45309; margin-top: 6px; }
     .card .unavailable { color: #9ca3af; font-size: 0.9rem; }
     .temp { font-size: 2rem; font-weight: 600; }
+
+    /* Hub grid — small "calling cards" on the main page, each opening its
+       own detail view instead of every list living on the main scroll. */
+    .hub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .hub-card {
+      background: #fff; border-radius: 12px; overflow: hidden; cursor: pointer;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08); text-align: left; border: none;
+      padding: 0; display: flex; flex-direction: column; font-family: inherit;
+      transition: transform 0.13s, box-shadow 0.13s;
+    }
+    .hub-card:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.12); }
+    .hub-card-photo { width: 100%; height: 72px; object-fit: cover; display: block; }
+    .hub-card-body { padding: 10px 12px; }
+    .hub-card-title { font-size: 0.85rem; font-weight: 700; color: #1a1a1a; margin-bottom: 3px; }
+    .hub-card-preview { font-size: 0.75rem; color: #6b7280; line-height: 1.3; }
+    /* Row-style hub card for sections with no photo (News) */
+    .hub-card.row { flex-direction: row; align-items: center; gap: 10px; padding: 12px; }
+    .hub-card.row .hub-card-icon { font-size: 1.6rem; flex-shrink: 0; }
+    .hub-card.row .hub-card-body { padding: 0; flex: 1; min-width: 0; }
+
+    .back-btn {
+      display: inline-flex; align-items: center; gap: 6px; background: #fff;
+      border: 1px solid #e5e7eb; border-radius: 10px; padding: 8px 14px;
+      margin-bottom: 12px; font-size: 0.85rem; font-weight: 600; color: #1a1a1a;
+      cursor: pointer;
+    }
+    .back-btn:active { background: #f4f7f5; }
+
     .news-item { padding: 8px 0; border-top: 1px solid #eee; font-size: 0.9rem; }
     .news-item:first-child { border-top: none; }
     .news-item a { color: #0b6e4f; text-decoration: none; }
@@ -59,6 +84,9 @@
       width: 100%; height: 100px; object-fit: cover; border-radius: 10px;
       margin-bottom: 12px; display: block;
     }
+    #trafficMap { width: 100%; height: 280px; border-radius: 10px; margin-bottom: 12px; background: #e5e7eb; }
+    .map-legend { font-size: 0.72rem; color: #6b7280; margin: -6px 0 12px; }
+
     .tide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .tide-chip {
       display: flex; align-items: center; gap: 10px; padding: 10px 12px;
@@ -85,14 +113,15 @@
   </div>
   <div class="location-status" id="locationStatus">Showing: Cornwall-wide overview</div>
   <main id="app">
-    <div class="card"><p>Loading live Cornwall data…</p></div>
+    <div id="weatherSummary"><div class="card"><p>Loading live Cornwall data…</p></div></div>
+    <div id="hubGrid" class="hub-grid"></div>
+    <div id="detailPanel" hidden></div>
   </main>
-  <footer>Weather: Open-Meteo · Wildlife: GBIF · Phase 1 build</footer>
+  <footer>Weather: Open-Meteo · Wildlife: GBIF · Buses: BODS · Traffic: TomTom · Tides: tidetimes.org.uk</footer>
 
   <script>
-    // Remembers the visitor's last searched place in *their* browser only —
-    // never sent anywhere, just a small convenience so refreshing doesn't
-    // reset them back to the county-wide default.
+    // ── Location search (unchanged behaviour, just kept alongside the new
+    // hub/detail layout below) ──────────────────────────────────────────
     function loadSavedLocation() {
       try {
         const raw = localStorage.getItem('cornwallRadarLocation');
@@ -104,6 +133,8 @@
     }
 
     let currentLocation = loadSavedLocation(); // { lat, lon, label } or null = Cornwall-wide default
+    let dashboardData = null; // last-fetched /api/dashboard payload
+    let trafficMapInstance = null;
 
     function updateLocationStatus() {
       const el = document.getElementById('locationStatus');
@@ -159,8 +190,9 @@
       );
     }
 
+    // ── Main load: fetch once, render the compact weather summary + the
+    // hub grid. Full lists only get built when a hub card is opened. ────
     async function loadDashboard() {
-      const app = document.getElementById('app');
       try {
         const params = new URLSearchParams();
         if (currentLocation) {
@@ -168,15 +200,12 @@
           params.set('lon', currentLocation.lon);
         }
         const res = await fetch('/api/dashboard' + (params.toString() ? '?' + params.toString() : ''));
-        const data = await res.json();
-        app.innerHTML = renderWeather(data.weather)
-          + renderTides(data.tides)
-          + renderTraffic(data.traffic)
-          + renderBuses(data.buses)
-          + renderWildlife(data.wildlife)
-          + renderNews(data.news);
+        dashboardData = await res.json();
+        document.getElementById('weatherSummary').innerHTML = renderWeather(dashboardData.weather);
+        renderHubGrid();
       } catch (err) {
-        app.innerHTML = '<div class="card"><p class="unavailable">Could not reach the dashboard API: ' + err.message + '</p></div>';
+        document.getElementById('weatherSummary').innerHTML =
+          '<div class="card"><p class="unavailable">Could not reach the dashboard API: ' + err.message + '</p></div>';
       }
     }
 
@@ -190,48 +219,93 @@
         + '</div>';
     }
 
-    function renderNews(n) {
-      if (!n || !n.items || n.items.length === 0) {
-        return '<div class="card"><h2>📰 News &amp; What\'s On</h2><p class="unavailable">No stories available right now</p></div>';
+    // ── Hub cards: one short "calling card" per section, each opening a
+    // full detail view on tap instead of growing the main page forever. ──
+    function hubPreview(key) {
+      const d = dashboardData || {};
+      if (key === 'traffic') {
+        const t = d.traffic;
+        if (!t || t.unavailable) return 'Unavailable right now';
+        if (t.configured === false) return 'Not set up yet';
+        return (t.incidents && t.incidents.length) ? t.incidents.length + ' incident(s) reported' : 'Roads look clear';
       }
-      const items = n.items.slice(0, 5).map(i =>
-        '<div class="news-item"><a href="' + i.link + '" target="_blank">' + i.title + '</a></div>'
-      ).join('');
-      return '<div class="card"><h2>📰 News &amp; What\'s On</h2>' + items + '</div>';
+      if (key === 'buses') {
+        const b = d.buses;
+        if (!b || b.unavailable) return 'Unavailable right now';
+        if (b.configured === false) return 'Not set up yet';
+        return (b.vehicles && b.vehicles.length) ? b.vehicles.length + ' active route(s)' : 'No active routes right now';
+      }
+      if (key === 'tides') {
+        const t = d.tides;
+        if (!t || t.unavailable) return 'Unavailable right now';
+        if (!t.tides || !t.tides.length) return 'No tide data right now';
+        const next = t.tides[0];
+        return 'Next: ' + next.type + ' tide at ' + next.time;
+      }
+      if (key === 'wildlife') {
+        const wl = d.wildlife;
+        if (!wl || wl.unavailable || !wl.sightings || !wl.sightings.length) return 'No recent sightings';
+        return wl.sightings.length + ' recent sighting(s)';
+      }
+      if (key === 'news') {
+        const n = d.news;
+        if (!n || !n.items || !n.items.length) return 'No stories right now';
+        return n.items[0].title;
+      }
+      return '';
     }
 
-    function renderWildlife(wl) {
-      if (!wl || wl.unavailable || !wl.sightings || wl.sightings.length === 0) {
-        return '<div class="card"><h2>🦡 Wildlife Sightings</h2><p class="unavailable">No recent sightings available right now</p></div>';
-      }
-      const items = wl.sightings.slice(0, 5).map(s =>
-        '<div class="sighting">' + s.species + (s.locality ? ' — ' + s.locality : '') + '</div>'
-      ).join('');
-      return '<div class="card"><h2>🦡 Wildlife Sightings</h2>' + items + '</div>';
-    }
+    const HUB_SECTIONS = [
+      { key: 'traffic', icon: '🚗', title: 'Traffic', photo: '/images/traffic-hero.jpg' },
+      { key: 'buses', icon: '🚌', title: 'Live Buses', photo: '/images/buses-hero.jpg' },
+      { key: 'tides', icon: '🌊', title: 'Tide Times', photo: '/images/tides.jpg' },
+      { key: 'wildlife', icon: '🦡', title: 'Wildlife', photo: '/images/wildlife-hero.jpg' },
+      { key: 'news', icon: '📰', title: "News & What's On", photo: null },
+    ];
 
-    function renderTides(t) {
-      const title = '🌊 Tide Times';
-      const banner = '<img class="card-banner" src="/images/tides.jpg" alt="" />';
-
-      if (!t || t.unavailable) {
-        return '<div class="card">' + banner + '<h2>' + title + '</h2><p class="unavailable">Unavailable right now (' + (t?.error || 'unknown error') + ')</p></div>';
-      }
-      if (!t.tides || t.tides.length === 0) {
-        return '<div class="card">' + banner + '<h2>' + title + '</h2><p class="unavailable">No tide data right now</p></div>';
-      }
-      const subtitle = t.station ? '<p class="section-subtitle">Nearest station: ' + t.station + '</p>' : '';
-      const chips = t.tides.slice(0, 4).map(tide => {
-        const cls = tide.type === 'High' ? 'high' : 'low';
-        const icon = tide.type === 'High' ? '⬆️' : '⬇️';
-        return '<div class="tide-chip ' + cls + '">'
-          + '<span class="tide-chip-icon">' + icon + '</span>'
-          + '<div><div class="tide-chip-type">' + tide.type + ' Tide</div>'
-          + '<div class="tide-chip-time">' + tide.time + '</div>'
-          + '<div class="tide-chip-height">' + tide.heightM + 'm</div></div>'
-          + '</div>';
+    function renderHubGrid() {
+      const grid = document.getElementById('hubGrid');
+      grid.innerHTML = HUB_SECTIONS.map(s => {
+        const preview = hubPreview(s.key);
+        if (s.photo) {
+          return '<button class="hub-card" onclick="openDetail(\'' + s.key + '\')">'
+            + '<img class="hub-card-photo" src="' + s.photo + '" alt="" />'
+            + '<div class="hub-card-body"><div class="hub-card-title">' + s.icon + ' ' + s.title + '</div>'
+            + '<div class="hub-card-preview">' + preview + '</div></div>'
+            + '</button>';
+        }
+        return '<button class="hub-card row" onclick="openDetail(\'' + s.key + '\')">'
+          + '<span class="hub-card-icon">' + s.icon + '</span>'
+          + '<div class="hub-card-body"><div class="hub-card-title">' + s.title + '</div>'
+          + '<div class="hub-card-preview">' + preview + '</div></div>'
+          + '</button>';
       }).join('');
-      return '<div class="card">' + banner + '<h2>' + title + '</h2>' + subtitle + '<div class="tide-grid">' + chips + '</div></div>';
+    }
+
+    function openDetail(key) {
+      document.getElementById('hubGrid').hidden = true;
+      const panel = document.getElementById('detailPanel');
+      panel.hidden = false;
+
+      const renderers = {
+        traffic: renderTrafficDetail,
+        buses: renderBusesDetail,
+        tides: renderTidesDetail,
+        wildlife: renderWildlifeDetail,
+        news: renderNewsDetail,
+      };
+      const backBtn = '<button class="back-btn" onclick="closeDetail()">← Back</button>';
+      panel.innerHTML = backBtn + renderers[key](dashboardData ? dashboardData[key] : null);
+
+      if (key === 'traffic') initTrafficMap(dashboardData ? dashboardData.traffic : null);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function closeDetail() {
+      if (trafficMapInstance) { trafficMapInstance.remove(); trafficMapInstance = null; }
+      document.getElementById('detailPanel').hidden = true;
+      document.getElementById('detailPanel').innerHTML = '';
+      document.getElementById('hubGrid').hidden = false;
     }
 
     // Shared not-configured / error / coming-online states for a section
@@ -250,24 +324,71 @@
       return null;
     }
 
-    function renderTraffic(t) {
+    function renderTrafficDetail(t) {
       const title = '🚗 Traffic';
       const state = unavailableState(title, t);
       if (state) return state;
 
       const subtitle = t.searchedLocation ? '<p class="section-subtitle">' + t.searchedLocation + '</p>' : '';
+      const mapBlock = '<div id="trafficMap"></div><p class="map-legend">Coloured lines show current traffic flow speed · markers/lines show reported incidents</p>';
 
       if (!t.incidents || t.incidents.length === 0) {
-        return '<div class="card"><h2>' + title + '</h2>' + subtitle + '<p class="unavailable">No incidents reported right now — roads look clear</p></div>';
+        return '<div class="card"><h2>' + title + '</h2>' + subtitle + mapBlock + '<p class="unavailable">No incidents reported right now — roads look clear</p></div>';
       }
       const items = t.incidents.slice(0, 10).map(i =>
         '<div class="traffic-item"><span class="road">' + i.road + '</span><br>'
         + '<span class="desc">' + i.description + '</span></div>'
       ).join('');
-      return '<div class="card"><h2>' + title + '</h2>' + subtitle + items + '</div>';
+      return '<div class="card"><h2>' + title + '</h2>' + subtitle + mapBlock + items + '</div>';
     }
 
-    function renderBuses(b) {
+    // Sets up (or resets) the Leaflet map for the traffic detail view. Base
+    // tiles are plain OpenStreetMap (free, no key, always works); the
+    // TomTom flow-speed overlay is added only if a key is configured —
+    // its absence should never break the map itself. Incident markers/
+    // lines come from data we already fetched via TomTom's incidentDetails
+    // API, so they render even if the flow-tile overlay has any hiccup.
+    async function initTrafficMap(t) {
+      const mapEl = document.getElementById('trafficMap');
+      if (!mapEl) return;
+      if (trafficMapInstance) { trafficMapInstance.remove(); trafficMapInstance = null; }
+
+      const center = (t && t.center && t.center.lat != null) ? t.center : { lat: 50.2632, lon: -5.0510 };
+      const map = L.map('trafficMap').setView([center.lat, center.lon], 11);
+      trafficMapInstance = map;
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19,
+      }).addTo(map);
+
+      try {
+        const res = await fetch('/api/tomtom-key');
+        const { key } = await res.json();
+        if (key) {
+          // No "t" (model id) param — passing an arbitrary value here
+          // breaks every tile request with a 400; it's optional and
+          // TomTom uses its current model when omitted.
+          L.tileLayer('https://api.tomtom.com/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.png?key=' + key, {
+            opacity: 0.7,
+            maxZoom: 19,
+          }).addTo(map);
+        }
+      } catch (e) { /* flow overlay is a bonus layer — map still works without it */ }
+
+      (t && t.incidents ? t.incidents : []).forEach((inc) => {
+        if (!inc.coordinates) return;
+        if (inc.geometryType === 'LineString') {
+          const latlngs = inc.coordinates.map((c) => [c[1], c[0]]);
+          L.polyline(latlngs, { color: '#dc2626', weight: 4 }).addTo(map).bindPopup(inc.description);
+        } else {
+          const [lon, lat] = inc.coordinates;
+          L.marker([lat, lon]).addTo(map).bindPopup(inc.description);
+        }
+      });
+    }
+
+    function renderBusesDetail(b) {
       const title = '🚌 Live Buses';
       const state = unavailableState(title, b);
       if (state) return state;
@@ -291,6 +412,51 @@
           + '</div>';
       }).join('');
       return '<div class="card"><h2>' + title + '</h2>' + subtitle + items + '</div>';
+    }
+
+    function renderTidesDetail(t) {
+      const title = '🌊 Tide Times';
+      const banner = '<img class="card-banner" src="/images/tides.jpg" alt="" />';
+
+      if (!t || t.unavailable) {
+        return '<div class="card">' + banner + '<h2>' + title + '</h2><p class="unavailable">Unavailable right now (' + (t?.error || 'unknown error') + ')</p></div>';
+      }
+      if (!t.tides || t.tides.length === 0) {
+        return '<div class="card">' + banner + '<h2>' + title + '</h2><p class="unavailable">No tide data right now</p></div>';
+      }
+      const subtitle = t.station ? '<p class="section-subtitle">Nearest station: ' + t.station + '</p>' : '';
+      const chips = t.tides.slice(0, 8).map(tide => {
+        const cls = tide.type === 'High' ? 'high' : 'low';
+        const icon = tide.type === 'High' ? '⬆️' : '⬇️';
+        return '<div class="tide-chip ' + cls + '">'
+          + '<span class="tide-chip-icon">' + icon + '</span>'
+          + '<div><div class="tide-chip-type">' + tide.type + ' Tide</div>'
+          + '<div class="tide-chip-time">' + tide.time + '</div>'
+          + '<div class="tide-chip-height">' + tide.heightM + 'm</div></div>'
+          + '</div>';
+      }).join('');
+      return '<div class="card">' + banner + '<h2>' + title + '</h2>' + subtitle + '<div class="tide-grid">' + chips + '</div></div>';
+    }
+
+    function renderWildlifeDetail(wl) {
+      const banner = '<img class="card-banner" src="/images/wildlife-hero.jpg" alt="" />';
+      if (!wl || wl.unavailable || !wl.sightings || wl.sightings.length === 0) {
+        return '<div class="card">' + banner + '<h2>🦡 Wildlife Sightings</h2><p class="unavailable">No recent sightings available right now</p></div>';
+      }
+      const items = wl.sightings.slice(0, 15).map(s =>
+        '<div class="sighting">' + s.species + (s.locality ? ' — ' + s.locality : '') + '</div>'
+      ).join('');
+      return '<div class="card">' + banner + '<h2>🦡 Wildlife Sightings</h2>' + items + '</div>';
+    }
+
+    function renderNewsDetail(n) {
+      if (!n || !n.items || n.items.length === 0) {
+        return '<div class="card"><h2>📰 News &amp; What\'s On</h2><p class="unavailable">No stories available right now</p></div>';
+      }
+      const items = n.items.slice(0, 15).map(i =>
+        '<div class="news-item"><a href="' + i.link + '" target="_blank">' + i.title + '</a></div>'
+      ).join('');
+      return '<div class="card"><h2>📰 News &amp; What\'s On</h2>' + items + '</div>';
     }
 
     document.getElementById('scanBtn').addEventListener('click', scanLocation);
