@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cornwall Radar</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0b6e4f" />
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f4f7f5; color: #1a1a1a;
+    }
+    header {
+      background: #0b6e4f; color: #fff; padding: 20px 16px;
+    }
+    header h1 { margin: 0; font-size: 1.4rem; }
+    header p { margin: 4px 0 0; opacity: 0.85; font-size: 0.9rem; }
+    main { padding: 12px; max-width: 640px; margin: 0 auto; }
+    .card {
+      background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .card h2 { margin: 0 0 8px; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+    .card .stale { font-size: 0.8rem; color: #b45309; margin-top: 6px; }
+    .card .unavailable { color: #9ca3af; font-size: 0.9rem; }
+    .temp { font-size: 2rem; font-weight: 600; }
+    .news-item { padding: 8px 0; border-top: 1px solid #eee; font-size: 0.9rem; }
+    .news-item:first-child { border-top: none; }
+    .news-item a { color: #0b6e4f; text-decoration: none; }
+    .sighting { font-size: 0.9rem; padding: 4px 0; }
+    footer { text-align: center; padding: 20px; color: #888; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🌤️ Cornwall Radar</h1>
+    <p>The place to check before heading out</p>
+  </header>
+  <main id="app">
+    <div class="card"><p>Loading live Cornwall data…</p></div>
+  </main>
+  <footer>Weather: Open-Meteo · Wildlife: GBIF · Phase 1 build</footer>
+
+  <script>
+    async function loadDashboard() {
+      const app = document.getElementById('app');
+      try {
+        const res = await fetch('/api/dashboard');
+        const data = await res.json();
+        app.innerHTML = renderWeather(data.weather)
+          + renderNews(data.news)
+          + renderWildlife(data.wildlife)
+          + renderPlaceholder('🚗 Traffic', data.traffic)
+          + renderPlaceholder('🚌 Live Buses', data.buses);
+      } catch (err) {
+        app.innerHTML = '<div class="card"><p class="unavailable">Could not reach the dashboard API: ' + err.message + '</p></div>';
+      }
+    }
+
+    function renderWeather(w) {
+      if (!w || w.unavailable) {
+        return '<div class="card"><h2>🌦️ Weather</h2><p class="unavailable">Unavailable right now (' + (w?.error || 'unknown error') + ')</p></div>';
+      }
+      return '<div class="card"><h2>🌦️ Weather</h2>'
+        + '<div class="temp">' + Math.round(w.current.tempC) + '&deg;C</div>'
+        + '<p>' + w.current.condition + ' · wind ' + Math.round(w.current.windKph) + ' km/h</p>'
+        + '</div>';
+    }
+
+    function renderNews(n) {
+      if (!n || !n.items || n.items.length === 0) {
+        return '<div class="card"><h2>📰 News &amp; What\'s On</h2><p class="unavailable">No stories available right now</p></div>';
+      }
+      const items = n.items.slice(0, 5).map(i =>
+        '<div class="news-item"><a href="' + i.link + '" target="_blank">' + i.title + '</a></div>'
+      ).join('');
+      return '<div class="card"><h2>📰 News &amp; What\'s On</h2>' + items + '</div>';
+    }
+
+    function renderWildlife(wl) {
+      if (!wl || wl.unavailable || !wl.sightings || wl.sightings.length === 0) {
+        return '<div class="card"><h2>🦡 Wildlife Sightings</h2><p class="unavailable">No recent sightings available right now</p></div>';
+      }
+      const items = wl.sightings.slice(0, 5).map(s =>
+        '<div class="sighting">' + s.species + (s.locality ? ' — ' + s.locality : '') + '</div>'
+      ).join('');
+      return '<div class="card"><h2>🦡 Wildlife Sightings</h2>' + items + '</div>';
+    }
+
+    function renderPlaceholder(title, section) {
+      if (section && section.configured === false) {
+        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">' + section.message + '</p></div>';
+      }
+      return '<div class="card"><h2>' + title + '</h2><p class="unavailable">Coming online once configured</p></div>';
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>

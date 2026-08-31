@@ -1,0 +1,17 @@
+{
+  "name": "cornwall-radar-backend",
+  "version": "0.1.0",
+  "description": "Cornwall Radar - Phase 1 backend (weather, traffic, buses, wildlife, news dashboard)",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5",
+    "rss-parser": "^3.13.0",
+    "cors": "^2.8.5"
+  }
+}
