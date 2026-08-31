@@ -239,6 +239,21 @@
     .pollen-bar-fill.pollen-none { background: var(--text-3); }
     .pollen-tip { font-size: 0.78rem; color: var(--text-2); margin-top: 5px; line-height: 1.35; }
 
+    .worldclock-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+    .worldclock-item {
+      padding: 10px 6px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+      background: #f9fbfa; text-align: center;
+    }
+    .worldclock-city {
+      font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+      color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .worldclock-time { font-size: 1.05rem; font-weight: 800; color: var(--text); margin-top: 3px; }
+    .worldclock-day {
+      font-size: 0.62rem; font-weight: 700; color: var(--accent-dark); background: var(--accent-soft);
+      padding: 1px 5px; border-radius: 999px;
+    }
+
     footer { text-align: center; padding: 24px 16px; color: var(--text-3); font-size: 0.78rem; }
   </style>
 </head>
@@ -508,11 +523,13 @@
       panel.innerHTML = backBtn + renderers[key](sectionData);
 
       if (key === 'traffic') initTrafficMap(dashboardData ? dashboardData.traffic : null);
+      if (key === 'weatherDetails') startWorldClock();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     function closeDetail() {
       if (trafficMapInstance) { trafficMapInstance.remove(); trafficMapInstance = null; }
+      stopWorldClock();
       document.getElementById('detailPanel').hidden = true;
       document.getElementById('detailPanel').innerHTML = '';
       document.getElementById('hubGrid').hidden = false;
@@ -684,6 +701,56 @@
       return 'pollen-none';
     }
 
+    // World Clock — a small strip on the Weather Details page for checking
+    // the time in a handful of other places (handy when Cornwall gets
+    // visitors, or has family/friends, elsewhere in the world). This runs
+    // entirely on the browser's own built-in timezone database (Intl), so
+    // unlike the rest of this page it needs no API key, no network call, and
+    // can't go down or run out of quota — a fixed list of cities doesn't
+    // need a per-request geocoded lookup, so the Google Time Zone API isn't
+    // actually needed here (it stays useful only if this ever needs the
+    // timezone for an arbitrary searched location rather than a fixed list).
+    const WORLD_CLOCK_CITIES = [
+      { label: 'Cornwall', tz: 'Europe/London' },
+      { label: 'New York', tz: 'America/New_York' },
+      { label: 'Los Angeles', tz: 'America/Los_Angeles' },
+      { label: 'Dubai', tz: 'Asia/Dubai' },
+      { label: 'Sydney', tz: 'Australia/Sydney' },
+      { label: 'Tokyo', tz: 'Asia/Tokyo' },
+    ];
+    let worldClockInterval = null;
+
+    function worldClockItemsHtml() {
+      const now = new Date();
+      const localDay = new Intl.DateTimeFormat('en-GB', { weekday: 'short', timeZone: 'Europe/London' }).format(now);
+      return WORLD_CLOCK_CITIES.map(c => {
+        const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: c.tz }).format(now);
+        const day = new Intl.DateTimeFormat('en-GB', { weekday: 'short', timeZone: c.tz }).format(now);
+        const dayTag = day !== localDay ? '<span class="worldclock-day">' + day + '</span>' : '';
+        return '<div class="worldclock-item">'
+          + '<div class="worldclock-city">' + c.label + '</div>'
+          + '<div class="worldclock-time">' + time + ' ' + dayTag + '</div>'
+          + '</div>';
+      }).join('');
+    }
+
+    function renderWorldClockSection() {
+      return '<h3 class="wd-subhead">World Clock</h3><div class="worldclock-grid" id="worldClockGrid">' + worldClockItemsHtml() + '</div>';
+    }
+
+    function startWorldClock() {
+      stopWorldClock();
+      worldClockInterval = setInterval(() => {
+        const grid = document.getElementById('worldClockGrid');
+        if (!grid) { stopWorldClock(); return; }
+        grid.innerHTML = worldClockItemsHtml();
+      }, 30000);
+    }
+
+    function stopWorldClock() {
+      if (worldClockInterval) { clearInterval(worldClockInterval); worldClockInterval = null; }
+    }
+
     function renderWeatherDetailsDetail(d) {
       const banner = '<img class="card-banner" src="/images/weather-hero.jpg" alt="" />';
       const title = '🌤️ Weather Details';
@@ -750,7 +817,9 @@
         forecastBlock = '<h3 class="wd-subhead">Extended forecast</h3><div class="wd-forecast-list">' + rows + '</div>';
       }
 
-      return '<div class="card">' + banner + '<h2>' + title + '</h2>' + pollenBlock + extraBlock + forecastBlock + '</div>';
+      const worldClockBlock = renderWorldClockSection();
+
+      return '<div class="card">' + banner + '<h2>' + title + '</h2>' + pollenBlock + extraBlock + forecastBlock + worldClockBlock + '</div>';
     }
 
     function renderNewsDetail(n) {
