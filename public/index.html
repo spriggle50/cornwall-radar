@@ -263,6 +263,50 @@
       padding: 1px 5px; border-radius: 999px;
     }
 
+    /* ── Events & What's On — a free photo-card feed (What's On) plus an
+       optional grid of ticketed events grouped by month. */
+    .whatson-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+    .whatson-card {
+      background: #f9fbfa; border: 1px solid var(--border); border-radius: var(--radius-sm);
+      overflow: hidden; display: flex; flex-direction: column; text-decoration: none; color: var(--text);
+      transition: border-color 0.13s, transform 0.13s;
+    }
+    .whatson-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .whatson-card-img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+    .whatson-card-img-placeholder {
+      width: 100%; aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center;
+      font-size: 1.8rem; background: var(--accent-soft);
+    }
+    .whatson-card-body { padding: 9px 10px; }
+    .whatson-card-title { font-size: 0.78rem; font-weight: 700; line-height: 1.35; margin-bottom: 3px; }
+    .whatson-card-date { font-size: 0.7rem; color: var(--text-3); }
+
+    .event-month-group { margin-top: 18px; }
+    .event-month-label {
+      font-size: 0.78rem; font-weight: 800; color: var(--accent-dark); text-transform: uppercase;
+      letter-spacing: 0.05em; margin-bottom: 10px; padding-bottom: 7px; border-bottom: 1px solid var(--border);
+    }
+    .events-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+    .event-card {
+      background: #f9fbfa; border: 1px solid var(--border); border-radius: var(--radius-sm);
+      overflow: hidden; display: flex; flex-direction: column;
+    }
+    .event-card-img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; display: block; }
+    .event-card-body { padding: 11px 13px; display: flex; flex-direction: column; gap: 4px; }
+    .event-card-meta-top { display: flex; }
+    .event-cat-pill {
+      font-size: 0.62rem; font-weight: 700; padding: 2px 9px; border-radius: 999px;
+      background: var(--accent-soft); color: var(--accent-dark); text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .event-card-name { font-size: 0.86rem; font-weight: 700; line-height: 1.35; }
+    .event-card-venue, .event-card-date { font-size: 0.75rem; color: var(--text-2); line-height: 1.4; }
+    .event-tickets-btn {
+      display: inline-block; margin-top: 6px; align-self: flex-start;
+      padding: 5px 12px; border-radius: 999px; background: #FBBF24; color: #12181a;
+      font-size: 0.72rem; font-weight: 700; text-decoration: none;
+    }
+    .event-tickets-btn:hover { background: #F59E0B; }
+
     footer { text-align: center; padding: 24px 16px; color: var(--text-3); font-size: 0.78rem; }
 
     /* ── Wider screens: the whole layout was tuned mobile-first at 640px,
@@ -489,6 +533,13 @@
         if (!n || !n.items || !n.items.length) return 'No stories right now';
         return n.items[0].title;
       }
+      if (key === 'eventsWhatson') {
+        const w = d.whatson;
+        if (w && w.items && w.items.length) return w.items[0].title;
+        const e = d.events;
+        if (e && e.configured && e.events && e.events.length) return e.events.length + ' upcoming event(s)';
+        return "What's on around Cornwall";
+      }
       if (key === 'weatherDetails') {
         const p = d.pollen;
         if (p && p.configured && p.types && p.types.length) {
@@ -506,7 +557,8 @@
       { key: 'buses', icon: '🚌', title: 'Live Buses', photo: '/images/buses-hero.jpg' },
       { key: 'tides', icon: '🌊', title: 'Tide Times', photo: '/images/tides.jpg' },
       { key: 'wildlife', icon: '🦡', title: 'Wildlife', photo: '/images/wildlife-hero.jpg' },
-      { key: 'news', icon: '📰', title: "News & What's On", photo: null },
+      { key: 'eventsWhatson', icon: '🎉', title: "Events & What's On", photo: '/images/events.jpg' },
+      { key: 'news', icon: '📰', title: 'Cornwall News', photo: null },
     ];
 
     function renderHubGrid() {
@@ -541,12 +593,14 @@
         wildlife: renderWildlifeDetail,
         news: renderNewsDetail,
         weatherDetails: renderWeatherDetailsDetail,
+        eventsWhatson: renderEventsWhatsonDetail,
       };
       const backBtn = '<button class="back-btn" onclick="closeDetail()">← Back</button>';
-      // weatherDetails draws from three top-level fields at once (weather,
-      // pollen, weatherDetail) rather than a single dashboardData[key], so it
-      // gets the whole payload instead of one slice of it.
-      const sectionData = key === 'weatherDetails' ? dashboardData : (dashboardData ? dashboardData[key] : null);
+      // weatherDetails and eventsWhatson each draw from more than one
+      // top-level field at once, so they get the whole payload instead of
+      // a single dashboardData[key] slice.
+      const multiFieldKeys = ['weatherDetails', 'eventsWhatson'];
+      const sectionData = multiFieldKeys.includes(key) ? dashboardData : (dashboardData ? dashboardData[key] : null);
       panel.innerHTML = backBtn + renderers[key](sectionData);
 
       if (key === 'traffic') initTrafficMap(dashboardData ? dashboardData.traffic : null);
@@ -844,6 +898,79 @@
       }
 
       return '<div class="card">' + banner + '<h2>' + title + '</h2>' + pollenBlock + extraBlock + forecastBlock + '</div>';
+    }
+
+    // Events & What's On — two independent sources on one page, matching a
+    // separately-run project's own layout: an always-on, free, keyless
+    // "What's On" photo feed (Cornwall Live's dedicated RSS feed) plus an
+    // optional grid of ticketed events (Ticketmaster/Eventbrite, grouped by
+    // month) that only appears once at least one of those keys is set.
+    function renderEventsWhatsonDetail(d) {
+      const title = "🎉 Events & What's On";
+      if (!d) return '<div class="card"><h2>' + title + '</h2><p class="unavailable">Unavailable right now</p></div>';
+
+      const w = d.whatson;
+      const ev = d.events;
+
+      let whatsonBlock = '';
+      if (w && w.unavailable) {
+        whatsonBlock = '<h3 class="wd-subhead">What\'s On in Cornwall</h3><p class="unavailable">Unavailable right now (' + w.error + ')</p>';
+      } else if (!w || !w.items || !w.items.length) {
+        whatsonBlock = '<h3 class="wd-subhead">What\'s On in Cornwall</h3><p class="unavailable">No items available right now</p>';
+      } else {
+        const cards = w.items.map(item => {
+          const img = item.image
+            ? '<img class="whatson-card-img" src="' + item.image + '" alt="" loading="lazy" />'
+            : '<div class="whatson-card-img-placeholder">🎉</div>';
+          return '<a class="whatson-card" href="' + item.link + '" target="_blank">'
+            + img
+            + '<div class="whatson-card-body">'
+            + '<div class="whatson-card-title">' + item.title + '</div>'
+            + (item.date ? '<div class="whatson-card-date">' + item.date + '</div>' : '')
+            + '</div></a>';
+        }).join('');
+        whatsonBlock = '<h3 class="wd-subhead">What\'s On in Cornwall</h3><div class="whatson-grid">' + cards + '</div>';
+      }
+
+      let eventsBlock = '';
+      if (ev && ev.configured === false) {
+        eventsBlock = '<h3 class="wd-subhead">Local Events</h3><p class="unavailable">' + ev.message + '</p>';
+      } else if (ev && ev.unavailable) {
+        eventsBlock = '<h3 class="wd-subhead">Local Events</h3><p class="unavailable">Unavailable right now (' + ev.error + ')</p>';
+      } else if (ev && ev.configured && ev.events && ev.events.length) {
+        const notes = (ev.sourceNotes && ev.sourceNotes.length)
+          ? '<p class="section-subtitle" style="color:#b45309;">' + ev.sourceNotes.join(' · ') + '</p>'
+          : '';
+        const groups = {};
+        ev.events.forEach(e => {
+          const dt = e.date ? new Date(e.date) : null;
+          const key = (dt && !isNaN(dt)) ? dt.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) : 'Date TBC';
+          (groups[key] = groups[key] || []).push(e);
+        });
+        const groupsHtml = Object.entries(groups).map(([month, evts]) => {
+          const cards = evts.map(e => {
+            const dt = e.date ? new Date(e.date) : null;
+            const dateStr = (dt && !isNaN(dt)) ? dt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Date TBC';
+            const price = e.priceMin === 0 ? 'Free' : (e.priceMin != null ? 'From £' + Math.round(e.priceMin) : 'TBC');
+            const img = e.image ? '<img class="event-card-img" src="' + e.image + '" alt="" loading="lazy" />' : '';
+            return '<div class="event-card">'
+              + img
+              + '<div class="event-card-body">'
+              + '<div class="event-card-meta-top"><span class="event-cat-pill">' + (e.subCategory || e.category) + '</span></div>'
+              + '<div class="event-card-name">' + e.name + '</div>'
+              + '<div class="event-card-venue">📍 ' + e.venue + (e.city ? ' · ' + e.city : '') + '</div>'
+              + '<div class="event-card-date">📅 ' + dateStr + (e.time ? ' · ' + e.time : '') + ' &nbsp;·&nbsp; 🎟 ' + price + '</div>'
+              + (e.url ? '<a class="event-tickets-btn" href="' + e.url + '" target="_blank">🎟 Tickets</a>' : '')
+              + '</div></div>';
+          }).join('');
+          return '<div class="event-month-group"><div class="event-month-label">' + month + '</div><div class="events-grid">' + cards + '</div></div>';
+        }).join('');
+        eventsBlock = '<h3 class="wd-subhead">Local Events</h3>' + notes + groupsHtml;
+      } else if (ev && ev.configured) {
+        eventsBlock = '<h3 class="wd-subhead">Local Events</h3><p class="unavailable">No events found nearby right now — try again later</p>';
+      }
+
+      return '<div class="card"><h2>' + title + '</h2>' + whatsonBlock + eventsBlock + '</div>';
     }
 
     function renderNewsDetail(n) {
