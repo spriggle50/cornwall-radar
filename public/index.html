@@ -178,6 +178,9 @@
     .sighting a { color: var(--accent-dark); text-decoration: none; font-weight: 600; }
     .sighting a:hover { text-decoration: underline; }
     .sighting-record-link { display: block; font-size: 0.76rem; margin-top: 2px; }
+    .sighting.clickable { cursor: pointer; margin: 0 -18px; padding: 6px 18px; transition: background 0.13s; }
+    .sighting.clickable:hover { background: var(--accent-soft); }
+    #wildlifeMap { width: 100%; height: 300px; border-radius: var(--radius-sm); margin-bottom: 8px; background: #e5e7eb; }
     .traffic-item, .bus-item { padding: 10px 0; border-top: 1px solid var(--border); font-size: 0.9rem; }
     .traffic-item:first-child, .bus-item:first-child { border-top: none; padding-top: 2px; }
     .traffic-item .road, .bus-item .line { font-weight: 700; }
@@ -324,10 +327,12 @@
       .location-wrap, main { max-width: 960px; }
       .hub-grid { grid-template-columns: repeat(3, 1fr); }
       #trafficMap { height: 480px; }
+      #wildlifeMap { height: 420px; }
     }
     @media (min-width: 1200px) {
       .location-wrap, main { max-width: 1140px; }
       #trafficMap { height: 560px; }
+      #wildlifeMap { height: 480px; }
     }
   </style>
 </head>
@@ -368,6 +373,8 @@
     let dashboardData = null; // last-fetched /api/dashboard payload
     let trafficMapInstance = null;
     let trafficMapLayers = []; // index-matched to the incidents list, so a list click can find its map layer
+    let wildlifeMapInstance = null;
+    let wildlifeMapMarkers = []; // index-matched to the sightings list, same pattern as the traffic map
 
     function updateLocationStatus() {
       const el = document.getElementById('locationStatus');
@@ -632,11 +639,13 @@
       panel.innerHTML = backBtn + renderers[key](sectionData);
 
       if (key === 'traffic') initTrafficMap(dashboardData ? dashboardData.traffic : null);
+      if (key === 'wildlife') initWildlifeMap(dashboardData ? dashboardData.wildlife : null);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     function closeDetail() {
       if (trafficMapInstance) { trafficMapInstance.remove(); trafficMapInstance = null; }
+      if (wildlifeMapInstance) { wildlifeMapInstance.remove(); wildlifeMapInstance = null; }
       document.getElementById('detailPanel').hidden = true;
       document.getElementById('detailPanel').innerHTML = '';
       document.getElementById('hubGrid').hidden = false;
@@ -758,6 +767,62 @@
       document.getElementById('trafficMap')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
+    // All sightings come from GBIF already filtered to Cornwall's bounding
+    // box, so a plain OpenStreetMap tile layer with one marker per sighting
+    // is enough to show where in Cornwall each was actually spotted —
+    // same Leaflet setup as the traffic map above, just simpler (no lines,
+    // no live overlay, just points).
+    function initWildlifeMap(wl) {
+      const mapEl = document.getElementById('wildlifeMap');
+      if (!mapEl) return;
+      if (typeof L === 'undefined') {
+        mapEl.outerHTML = '<p class="unavailable">Map could not load (Leaflet failed to load from its CDN) — the sightings list below is still live.</p>';
+        return;
+      }
+      if (wildlifeMapInstance) { wildlifeMapInstance.remove(); wildlifeMapInstance = null; }
+
+      const sightings = (wl && wl.sightings ? wl.sightings : []).slice(0, 15);
+      const located = sightings.filter(s => s.lat != null && s.lon != null);
+      const center = located.length
+        ? { lat: located[0].lat, lon: located[0].lon }
+        : { lat: 50.2632, lon: -5.0510 }; // Cornwall-wide fallback when nothing has coordinates
+
+      const map = L.map('wildlifeMap').setView([center.lat, center.lon], located.length ? 10 : 9);
+      wildlifeMapInstance = map;
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19,
+      }).addTo(map);
+
+      // Indexed to match renderWildlifeDetail's own sightings.slice(0, 15)
+      // exactly, so clicking a list row can jump straight to its own marker.
+      wildlifeMapMarkers = [];
+      sightings.forEach((s, idx) => {
+        if (s.lat == null || s.lon == null) return;
+        const label = '<strong>' + s.species + '</strong>' + (s.date ? '<br>' + s.date : '') + (s.locality ? '<br>' + s.locality : '');
+        wildlifeMapMarkers[idx] = L.circleMarker([s.lat, s.lon], {
+          radius: 7, color: '#15803d', fillColor: '#22c55e', fillOpacity: 0.85,
+        }).addTo(map).bindPopup(label);
+      });
+
+      if (located.length > 1) {
+        const bounds = L.latLngBounds(located.map(s => [s.lat, s.lon]));
+        map.fitBounds(bounds, { padding: [24, 24], maxZoom: 13 });
+      }
+    }
+
+    // Called when a sighting row is clicked — same pan/zoom/popup pattern
+    // as focusTrafficIncident above, so the map and list feel connected.
+    function focusWildlifeSighting(idx) {
+      if (!wildlifeMapInstance) return;
+      const marker = wildlifeMapMarkers[idx];
+      if (!marker) return;
+      wildlifeMapInstance.setView(marker.getLatLng(), 13, { animate: true });
+      marker.openPopup();
+      document.getElementById('wildlifeMap')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
     function renderBusesDetail(b) {
       const title = '🚌 Live Buses';
       const state = unavailableState(title, b);
@@ -813,7 +878,20 @@
       if (!wl || wl.unavailable || !wl.sightings || wl.sightings.length === 0) {
         return '<div class="card">' + banner + '<h2>🦡 Wildlife Sightings</h2><p class="unavailable">No recent sightings available right now</p></div>';
       }
-      const items = wl.sightings.slice(0, 15).map(s => {
+      // Every sighting GBIF gives us is already inside Cornwall's bounding
+      // box (see wildlife.js), so plotting them together shows at a glance
+      // where in Cornwall things are actually being spotted, not just a list
+      // of names with nothing to place them on the map.
+      const sightings = wl.sightings.slice(0, 15);
+      const anyLocated = sightings.some(s => s.lat != null && s.lon != null);
+      const mapBlock = anyLocated
+        ? '<div id="wildlifeMap"></div><p class="map-legend">🟢 sighting location — click a sighting below to jump to it</p>'
+        : '';
+      // Indices here line up 1:1 with the same sightings array initWildlifeMap
+      // builds its markers from, so a click can jump straight to that
+      // sighting's own marker on the map above (same pattern as the traffic
+      // list/map link).
+      const items = sightings.map((s, idx) => {
         // Species name links to GBIF's species page (background, photos,
         // taxonomy) when GBIF gave us one; the location links to a map of
         // exactly where this sighting was logged. Neither existed before —
@@ -822,15 +900,19 @@
         const speciesLabel = s.gbifSpeciesKey
           ? '<a href="https://www.gbif.org/species/' + s.gbifSpeciesKey + '" target="_blank">' + s.species + '</a>'
           : s.species;
-        const mapLink = (s.lat != null && s.lon != null)
+        const hasCoords = s.lat != null && s.lon != null;
+        const mapLink = hasCoords
           ? ' — <a href="https://www.google.com/maps?q=' + s.lat + ',' + s.lon + '" target="_blank">' + (s.locality || 'View location') + '</a>'
           : (s.locality ? ' — ' + s.locality : '');
         const recordLink = s.gbifOccurrenceId
           ? ' <a class="sighting-record-link" href="https://www.gbif.org/occurrence/' + s.gbifOccurrenceId + '" target="_blank">Sighting record ↗</a>'
           : '';
-        return '<div class="sighting">' + speciesLabel + mapLink + recordLink + '</div>';
+        const cls = 'sighting' + (hasCoords ? ' clickable' : '');
+        const onclick = hasCoords ? ' onclick="focusWildlifeSighting(' + idx + ')"' : '';
+        const pinLink = hasCoords ? ' <span class="traffic-item-link">📍 Show on map</span>' : '';
+        return '<div class="' + cls + '"' + onclick + '>' + speciesLabel + mapLink + pinLink + recordLink + '</div>';
       }).join('');
-      return '<div class="card">' + banner + '<h2>🦡 Wildlife Sightings</h2>' + items + '</div>';
+      return '<div class="card">' + banner + '<h2>🦡 Wildlife Sightings</h2>' + mapBlock + items + '</div>';
     }
 
     // Weather Details — a second, separate page from the top-of-page hero.
