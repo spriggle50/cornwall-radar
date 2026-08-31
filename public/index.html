@@ -6,99 +6,190 @@
   <title>Cornwall Radar</title>
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#0b6e4f" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
-    :root { color-scheme: light; }
+    :root {
+      color-scheme: light;
+      --bg: #f2f5f4;
+      --card-bg: #ffffff;
+      --text: #12181a;
+      --text-2: #5b6b6a;
+      --text-3: #94a19f;
+      --border: #e6ecea;
+      --accent: #0a8f63;
+      --accent-dark: #076b4a;
+      --accent-soft: #e4f6ee;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 11px;
+      --shadow-sm: 0 1px 2px rgba(16,30,25,0.05), 0 1px 4px rgba(16,30,25,0.06);
+      --shadow-md: 0 8px 24px rgba(16,30,25,0.10);
+    }
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     body {
-      margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #f4f7f5; color: #1a1a1a;
+      margin: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased;
     }
-    header { background: #0b6e4f; color: #fff; padding: 20px 16px; }
-    header h1 { margin: 0; font-size: 1.4rem; }
-    header p { margin: 4px 0 0; opacity: 0.85; font-size: 0.9rem; }
-    .location-bar { display: flex; gap: 8px; padding: 12px 16px; background: #095c40; }
+
+    header {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+      color: #fff; padding: 22px 18px 26px;
+    }
+    header h1 { margin: 0; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
+    header p { margin: 4px 0 0; opacity: 0.88; font-size: 0.88rem; font-weight: 500; }
+
+    .location-wrap { max-width: 640px; margin: -16px auto 0; padding: 0 14px; position: relative; z-index: 2; }
+    .location-bar {
+      display: flex; gap: 6px; background: #fff; border-radius: var(--radius-md);
+      padding: 6px; box-shadow: var(--shadow-md);
+    }
     .location-bar input {
-      flex: 1; padding: 9px 12px; border-radius: 8px; border: none;
-      font-size: 0.9rem; min-width: 0;
+      flex: 1; padding: 10px 12px; border-radius: var(--radius-sm); border: none;
+      font-size: 0.9rem; min-width: 0; font-family: inherit; color: var(--text); background: transparent;
     }
+    .location-bar input:focus { outline: none; }
     .location-bar button {
-      padding: 9px 14px; border-radius: 8px; border: none; background: #fff;
-      color: #0b6e4f; font-weight: 600; font-size: 0.85rem; cursor: pointer; white-space: nowrap;
+      padding: 10px 16px; border-radius: var(--radius-sm); border: none; background: var(--accent);
+      color: #fff; font-weight: 700; font-size: 0.85rem; cursor: pointer; white-space: nowrap;
+      font-family: inherit; transition: background 0.13s;
     }
+    .location-bar button:hover { background: var(--accent-dark); }
     .location-bar button:active { opacity: 0.85; }
-    .location-status { padding: 8px 16px; font-size: 0.8rem; color: #0b6e4f; background: #e3f3ec; }
-    .location-status .change-link { color: #0b6e4f; text-decoration: underline; cursor: pointer; background: none; border: none; font: inherit; padding: 0; margin-left: 6px; }
-    .location-error { color: #b91c1c; }
-    main { padding: 12px; max-width: 640px; margin: 0 auto; }
-    .section-subtitle { font-size: 0.78rem; color: #6b7280; margin: -4px 0 10px; }
+    .location-bar #myLocationBtn { background: var(--accent-soft); color: var(--accent-dark); padding: 10px 13px; }
+    .location-bar #myLocationBtn:hover { background: #d3f0e2; }
+    .location-status {
+      padding: 8px 4px 0; font-size: 0.78rem; color: var(--text-2); text-align: center;
+    }
+    .location-status .change-link {
+      color: var(--accent-dark); text-decoration: underline; cursor: pointer; background: none;
+      border: none; font: inherit; padding: 0; margin-left: 6px; font-weight: 600;
+    }
+    .location-error { color: #c0362c; }
+
+    main { padding: 14px; max-width: 640px; margin: 0 auto; }
+    .section-subtitle { font-size: 0.78rem; color: var(--text-2); margin: -4px 0 10px; }
 
     .card {
-      background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      background: var(--card-bg); border-radius: var(--radius-lg); padding: 18px;
+      margin-bottom: 14px; box-shadow: var(--shadow-sm);
     }
-    .card h2 { margin: 0 0 8px; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
-    .card .stale { font-size: 0.8rem; color: #b45309; margin-top: 6px; }
-    .card .unavailable { color: #9ca3af; font-size: 0.9rem; }
-    .temp { font-size: 2rem; font-weight: 600; }
+    .card h2 { margin: 0 0 10px; font-size: 1.02rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .card .unavailable { color: var(--text-3); font-size: 0.9rem; }
 
-    /* Hub grid — small "calling cards" on the main page, each opening its
-       own detail view instead of every list living on the main scroll. */
-    .hub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
-    .hub-card {
-      background: #fff; border-radius: 12px; overflow: hidden; cursor: pointer;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08); text-align: left; border: none;
-      padding: 0; display: flex; flex-direction: column; font-family: inherit;
-      transition: transform 0.13s, box-shadow 0.13s;
+    /* ── Weather hero — the one thing every visitor should see and register
+       instantly, so it gets a full-bleed gradient treatment reflecting the
+       actual conditions rather than a plain white card like everything else. */
+    .weather-hero {
+      border-radius: var(--radius-lg); padding: 24px 22px; margin-bottom: 16px;
+      color: #fff; box-shadow: var(--shadow-md); position: relative; overflow: hidden;
     }
-    .hub-card:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.12); }
-    .hub-card-photo { width: 100%; height: 72px; object-fit: cover; display: block; }
-    .hub-card-body { padding: 10px 12px; }
-    .hub-card-title { font-size: 0.85rem; font-weight: 700; color: #1a1a1a; margin-bottom: 3px; }
-    .hub-card-preview { font-size: 0.75rem; color: #6b7280; line-height: 1.3; }
+    .weather-hero.cond-clear   { background: linear-gradient(135deg, #2d9ee0 0%, #4fc3f7 60%, #81d4fa 100%); }
+    .weather-hero.cond-night   { background: linear-gradient(135deg, #0f1c3f 0%, #26314f 60%, #3a4667 100%); }
+    .weather-hero.cond-cloudy  { background: linear-gradient(135deg, #5c7080 0%, #839aab 100%); }
+    .weather-hero.cond-rain    { background: linear-gradient(135deg, #33475b 0%, #4a6072 60%, #5d7285 100%); }
+    .weather-hero.cond-snow    { background: linear-gradient(135deg, #5f8fc7 0%, #a9d6e5 100%); }
+    .weather-hero.cond-fog     { background: linear-gradient(135deg, #7c8a94 0%, #b9c4cb 100%); }
+    .weather-hero.cond-storm   { background: linear-gradient(135deg, #232526 0%, #3f3f46 100%); }
+
+    .weather-hero-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+    .weather-main { display: flex; align-items: center; gap: 14px; }
+    .weather-emoji { font-size: 3.6rem; line-height: 1; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.15)); }
+    .weather-temp { font-size: 3rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
+    .weather-condition { font-size: 0.95rem; font-weight: 600; opacity: 0.95; margin-top: 2px; }
+    .weather-feelslike { font-size: 0.8rem; opacity: 0.8; margin-top: 2px; }
+    .weather-location-tag {
+      font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+      background: rgba(255,255,255,0.18); padding: 5px 10px; border-radius: 999px; white-space: nowrap;
+    }
+
+    .weather-stats-row { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+    .weather-stat {
+      flex: 1; min-width: 84px; background: rgba(255,255,255,0.16); border-radius: var(--radius-sm);
+      padding: 9px 12px; backdrop-filter: blur(6px);
+    }
+    .weather-stat-label { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8; }
+    .weather-stat-value { font-size: 1rem; font-weight: 700; margin-top: 2px; }
+    .uv-low { color: #d7ffe6; } .uv-moderate { color: #fff5c2; } .uv-high { color: #ffd8a8; }
+    .uv-veryhigh { color: #ffb4a8; } .uv-extreme { color: #ffb4f0; }
+
+    .weather-forecast-strip {
+      display: flex; gap: 8px; margin-top: 16px; padding-top: 14px;
+      border-top: 1px solid rgba(255,255,255,0.22);
+    }
+    .weather-forecast-day {
+      flex: 1; text-align: center; background: rgba(255,255,255,0.1); border-radius: var(--radius-sm);
+      padding: 9px 4px;
+    }
+    .weather-forecast-day-name { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; opacity: 0.85; }
+    .weather-forecast-day-emoji { font-size: 1.35rem; margin: 4px 0 2px; }
+    .weather-forecast-day-temps { font-size: 0.78rem; font-weight: 700; }
+    .weather-forecast-day-temps .lo { opacity: 0.7; font-weight: 500; }
+
+    /* ── Hub grid — small "calling cards" on the main page, each opening its
+       own detail view instead of every list living on the main scroll. */
+    .hub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+    .hub-card {
+      background: var(--card-bg); border-radius: var(--radius-md); overflow: hidden; cursor: pointer;
+      box-shadow: var(--shadow-sm); text-align: left; border: none;
+      padding: 0; display: flex; flex-direction: column; font-family: inherit;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .hub-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+    .hub-card-photo { width: 100%; height: 84px; object-fit: cover; display: block; }
+    .hub-card-body { padding: 11px 13px 13px; }
+    .hub-card-title { font-size: 0.86rem; font-weight: 700; color: var(--text); margin-bottom: 3px; letter-spacing: -0.01em; }
+    .hub-card-preview { font-size: 0.75rem; color: var(--text-2); line-height: 1.35; }
     /* Row-style hub card for sections with no photo (News) */
-    .hub-card.row { flex-direction: row; align-items: center; gap: 10px; padding: 12px; }
-    .hub-card.row .hub-card-icon { font-size: 1.6rem; flex-shrink: 0; }
+    .hub-card.row { flex-direction: row; align-items: flex-start; gap: 12px; padding: 14px; }
+    .hub-card.row .hub-card-icon {
+      font-size: 1.35rem; flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px;
+      background: var(--accent-soft); display: flex; align-items: center; justify-content: center;
+    }
     .hub-card.row .hub-card-body { padding: 0; flex: 1; min-width: 0; }
 
     .back-btn {
-      display: inline-flex; align-items: center; gap: 6px; background: #fff;
-      border: 1px solid #e5e7eb; border-radius: 10px; padding: 8px 14px;
-      margin-bottom: 12px; font-size: 0.85rem; font-weight: 600; color: #1a1a1a;
-      cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px; background: var(--card-bg);
+      border: 1px solid var(--border); border-radius: 999px; padding: 9px 16px;
+      margin-bottom: 14px; font-size: 0.85rem; font-weight: 700; color: var(--text);
+      cursor: pointer; font-family: inherit; box-shadow: var(--shadow-sm);
     }
-    .back-btn:active { background: #f4f7f5; }
+    .back-btn:hover { background: var(--accent-soft); color: var(--accent-dark); }
 
-    .news-item { padding: 8px 0; border-top: 1px solid #eee; font-size: 0.9rem; }
-    .news-item:first-child { border-top: none; }
-    .news-item a { color: #0b6e4f; text-decoration: none; }
-    .sighting { font-size: 0.9rem; padding: 4px 0; }
-    .traffic-item, .bus-item { padding: 8px 0; border-top: 1px solid #eee; font-size: 0.9rem; }
-    .traffic-item:first-child, .bus-item:first-child { border-top: none; }
-    .traffic-item .road, .bus-item .line { font-weight: 600; }
-    .traffic-item .desc, .bus-item .dest { color: #444; }
-    .bus-item .times { font-size: 0.8rem; color: #6b7280; }
-    .bus-item a { color: #0b6e4f; text-decoration: none; font-size: 0.8rem; }
+    .news-item { padding: 10px 0; border-top: 1px solid var(--border); font-size: 0.9rem; }
+    .news-item:first-child { border-top: none; padding-top: 2px; }
+    .news-item a { color: var(--text); text-decoration: none; font-weight: 500; }
+    .news-item a:hover { color: var(--accent-dark); }
+    .sighting { font-size: 0.9rem; padding: 6px 0; }
+    .traffic-item, .bus-item { padding: 10px 0; border-top: 1px solid var(--border); font-size: 0.9rem; }
+    .traffic-item:first-child, .bus-item:first-child { border-top: none; padding-top: 2px; }
+    .traffic-item .road, .bus-item .line { font-weight: 700; }
+    .traffic-item .desc, .bus-item .dest { color: var(--text-2); }
+    .bus-item .times { font-size: 0.8rem; color: var(--text-3); margin-top: 2px; }
+    .bus-item a { color: var(--accent-dark); text-decoration: none; font-size: 0.8rem; font-weight: 600; }
     .card-banner {
-      width: 100%; height: 100px; object-fit: cover; border-radius: 10px;
-      margin-bottom: 12px; display: block;
+      width: 100%; height: 110px; object-fit: cover; border-radius: var(--radius-sm);
+      margin-bottom: 14px; display: block;
     }
-    #trafficMap { width: 100%; height: 280px; border-radius: 10px; margin-bottom: 12px; background: #e5e7eb; }
-    .map-legend { font-size: 0.72rem; color: #6b7280; margin: -6px 0 12px; }
+    #trafficMap { width: 100%; height: 280px; border-radius: var(--radius-sm); margin-bottom: 12px; background: #e5e7eb; }
+    .map-legend { font-size: 0.72rem; color: var(--text-3); margin: -6px 0 14px; }
 
-    .tide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .tide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
     .tide-chip {
-      display: flex; align-items: center; gap: 10px; padding: 10px 12px;
-      border-radius: 10px; border: 1px solid #e5e7eb; background: #f9fafb;
+      display: flex; align-items: center; gap: 10px; padding: 11px 13px;
+      border-radius: var(--radius-sm); border: 1px solid var(--border); background: #f9fbfa;
     }
-    .tide-chip.high { border-color: #99d9cd; background: #edf9f5; }
+    .tide-chip.high { border-color: #a8e0cd; background: #edfaf4; }
     .tide-chip.low { border-color: #c7cffb; background: #f1f2fe; }
     .tide-chip-icon { font-size: 1.3rem; flex-shrink: 0; }
-    .tide-chip-type { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; }
-    .tide-chip-time { font-size: 1.1rem; font-weight: 700; color: #1a1a1a; line-height: 1.1; }
-    .tide-chip-height { font-size: 0.75rem; color: #0b6e4f; font-weight: 600; }
-    footer { text-align: center; padding: 20px; color: #888; font-size: 0.8rem; }
+    .tide-chip-type { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); }
+    .tide-chip-time { font-size: 1.15rem; font-weight: 800; color: var(--text); line-height: 1.15; }
+    .tide-chip-height { font-size: 0.76rem; color: var(--accent-dark); font-weight: 700; }
+    footer { text-align: center; padding: 24px 16px; color: var(--text-3); font-size: 0.78rem; }
   </style>
 </head>
 <body>
@@ -106,22 +197,23 @@
     <h1>🌤️ Cornwall Radar</h1>
     <p>The place to check before heading out</p>
   </header>
-  <div class="location-bar" id="locationBar">
-    <input type="text" id="locationInput" placeholder="Enter a Cornwall town or postcode…" />
-    <button id="scanBtn">Scan</button>
-    <button id="myLocationBtn" title="Use my current location">📍</button>
+  <div class="location-wrap">
+    <div class="location-bar" id="locationBar">
+      <input type="text" id="locationInput" placeholder="Enter a Cornwall town or postcode…" />
+      <button id="myLocationBtn" title="Use my current location">📍</button>
+      <button id="scanBtn">Scan</button>
+    </div>
+    <div class="location-status" id="locationStatus">Showing: Cornwall-wide overview</div>
   </div>
-  <div class="location-status" id="locationStatus">Showing: Cornwall-wide overview</div>
   <main id="app">
     <div id="weatherSummary"><div class="card"><p>Loading live Cornwall data…</p></div></div>
     <div id="hubGrid" class="hub-grid"></div>
     <div id="detailPanel" hidden></div>
   </main>
-  <footer>Weather: Open-Meteo · Wildlife: GBIF · Buses: BODS · Traffic: TomTom · Tides: tidetimes.org.uk</footer>
+  <footer>Weather: Open-Meteo · Wildlife: GBIF · Buses: BODS · Traffic: TomTom &amp; National Highways · Tides: tidetimes.org.uk</footer>
 
   <script>
-    // ── Location search (unchanged behaviour, just kept alongside the new
-    // hub/detail layout below) ──────────────────────────────────────────
+    // ── Location search ──────────────────────────────────────────────────
     function loadSavedLocation() {
       try {
         const raw = localStorage.getItem('cornwallRadarLocation');
@@ -190,8 +282,8 @@
       );
     }
 
-    // ── Main load: fetch once, render the compact weather summary + the
-    // hub grid. Full lists only get built when a hub card is opened. ────
+    // ── Main load: fetch once, render the weather hero + the hub grid.
+    // Full lists only get built when a hub card is opened. ────────────────
     async function loadDashboard() {
       try {
         const params = new URLSearchParams();
@@ -209,13 +301,66 @@
       }
     }
 
+    const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    function heroConditionClass(code, isDay) {
+      if (!isDay && (code === 0 || code === 1 || code === 2)) return 'cond-night';
+      if (code === 0) return 'cond-clear';
+      if (code === 1 || code === 2) return 'cond-clear';
+      if (code === 3) return 'cond-cloudy';
+      if (code === 45 || code === 48) return 'cond-fog';
+      if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) return 'cond-rain';
+      if ([71, 73, 75].includes(code)) return 'cond-snow';
+      if ([95, 96, 99].includes(code)) return 'cond-storm';
+      return 'cond-cloudy';
+    }
+
+    function uvLevel(uv) {
+      if (uv == null) return null;
+      if (uv < 3) return { label: 'Low', cls: 'uv-low' };
+      if (uv < 6) return { label: 'Moderate', cls: 'uv-moderate' };
+      if (uv < 8) return { label: 'High', cls: 'uv-high' };
+      if (uv < 11) return { label: 'Very High', cls: 'uv-veryhigh' };
+      return { label: 'Extreme', cls: 'uv-extreme' };
+    }
+
     function renderWeather(w) {
       if (!w || w.unavailable) {
         return '<div class="card"><h2>🌦️ Weather</h2><p class="unavailable">Unavailable right now (' + (w?.error || 'unknown error') + ')</p></div>';
       }
-      return '<div class="card"><h2>🌦️ Weather</h2>'
-        + '<div class="temp">' + Math.round(w.current.tempC) + '&deg;C</div>'
-        + '<p>' + w.current.condition + ' · wind ' + Math.round(w.current.windKph) + ' km/h</p>'
+      const c = w.current;
+      const cls = heroConditionClass(c.code, c.isDay);
+      const uv = uvLevel(c.uvIndexMax);
+      const locTag = currentLocation ? currentLocation.label.split(',')[0] : 'Cornwall';
+
+      const statsRow = '<div class="weather-stats-row">'
+        + '<div class="weather-stat"><div class="weather-stat-label">Feels like</div><div class="weather-stat-value">' + Math.round(c.feelsLikeC) + '&deg;</div></div>'
+        + '<div class="weather-stat"><div class="weather-stat-label">Wind</div><div class="weather-stat-value">' + Math.round(c.windKph) + ' km/h</div></div>'
+        + (uv ? '<div class="weather-stat"><div class="weather-stat-label">UV Today</div><div class="weather-stat-value ' + uv.cls + '">' + uv.label + '</div></div>' : '')
+        + '</div>';
+
+      const forecast = (w.forecast || []).slice(1, 5).map(f => {
+        const d = new Date(f.date + 'T12:00:00');
+        const dayName = isNaN(d) ? '' : DAY_NAMES[d.getDay()];
+        return '<div class="weather-forecast-day">'
+          + '<div class="weather-forecast-day-name">' + dayName + '</div>'
+          + '<div class="weather-forecast-day-emoji">' + f.emoji + '</div>'
+          + '<div class="weather-forecast-day-temps">' + Math.round(f.maxTempC) + '&deg; <span class="lo">' + Math.round(f.minTempC) + '&deg;</span></div>'
+          + '</div>';
+      }).join('');
+
+      return '<div class="weather-hero ' + cls + '">'
+        + '<div class="weather-hero-top">'
+        + '<div class="weather-main">'
+        + '<span class="weather-emoji">' + c.emoji + '</span>'
+        + '<div><div class="weather-temp">' + Math.round(c.tempC) + '&deg;</div>'
+        + '<div class="weather-condition">' + c.condition + '</div>'
+        + '<div class="weather-feelslike">Feels like ' + Math.round(c.feelsLikeC) + '&deg;</div></div>'
+        + '</div>'
+        + '<span class="weather-location-tag">📍 ' + locTag + '</span>'
+        + '</div>'
+        + statsRow
+        + (forecast ? '<div class="weather-forecast-strip">' + forecast + '</div>' : '')
         + '</div>';
     }
 
@@ -355,6 +500,10 @@
     async function initTrafficMap(t) {
       const mapEl = document.getElementById('trafficMap');
       if (!mapEl) return;
+      if (typeof L === 'undefined') {
+        mapEl.outerHTML = '<p class="unavailable">Map could not load (Leaflet failed to load from its CDN) — the incident list below is still live.</p>';
+        return;
+      }
       if (trafficMapInstance) { trafficMapInstance.remove(); trafficMapInstance = null; }
 
       const center = (t && t.center && t.center.lat != null) ? t.center : { lat: 50.2632, lon: -5.0510 };
