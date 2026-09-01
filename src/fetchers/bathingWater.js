@@ -51,7 +51,20 @@ const PAGE_SIZE = 200; // the API's own documented maximum
 
 const CORNWALL_BOUNDS = { minLat: 49.9, maxLat: 50.75, minLon: -5.75, maxLon: -4.2 };
 
-const FETCH_HEADERS = { 'User-Agent': 'CornwallRadar/1.0 (local conditions dashboard)', Accept: 'application/json' };
+// A fuller, more browser-like header set — the same custom UA that works
+// fine against every other Environment Agency endpoint in this project
+// (flood-monitoring's /flood-monitoring/id/*) is getting a 403 here on
+// BOTH /id/ and /doc/, which points away from a URL-path problem and
+// towards this particular sub-service (the public "Swimfo" bathing-water
+// lookup, historically scraped a lot) fingerprinting/blocking non-browser
+// requests specifically. This won't necessarily get past that, but it's
+// the standard, low-risk first thing to try before assuming it's an IP-
+// level block that no header change can fix.
+const FETCH_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+  Accept: 'application/json, text/plain, */*',
+  'Accept-Language': 'en-GB,en;q=0.9',
+};
 
 function firstOf(obj, paths) {
   for (const path of paths) {
@@ -181,7 +194,13 @@ async function fetchAllSites() {
 
     const res = await fetch(url, { headers: FETCH_HEADERS });
     if (!res.ok) {
-      throw new Error(`Bathing water request failed: ${res.status} ${res.statusText}`);
+      // Grabbing the body here (not just status/statusText) is the whole
+      // point after getting the same bare "403 Forbidden" twice in a row
+      // on two different URL paths — this is what actually tells us next
+      // time whether it's a plain rejection, a Cloudflare/Akamai challenge
+      // page, or a rate-limit response, instead of guessing a third time.
+      const bodyText = await res.text().catch(() => '');
+      throw new Error(`Bathing water request failed: ${res.status} ${res.statusText}${bodyText ? ' — ' + bodyText.slice(0, 300) : ''}`);
     }
     const data = await res.json();
     const pageItems = data.items || data.result?.items || [];
