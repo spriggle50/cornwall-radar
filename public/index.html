@@ -668,15 +668,11 @@
       // carries (the feed provides one for most stories), same trick the
       // reference implementation uses for its own photo-forward hub cards.
       { key: 'sport', icon: '⚽', title: 'Cornwall Sport', dynamicPhoto: (d) => d.sport?.items?.[0]?.image || null },
-      // Same dynamic-photo trick as Sport — no stock asset for the council's
-      // own news feed, so the top story's own thumbnail is borrowed instead.
-      { key: 'councilNews', icon: '🏛️', title: 'Cornwall Council News', dynamicPhoto: (d) => d.councilNews?.items?.[0]?.image || null },
+      { key: 'councilNews', icon: '🏛️', title: 'Cornwall Council News', photo: '/images/council-news.jpg' },
       { key: 'trains', icon: '🚆', title: 'Train Times', photo: '/images/trains.jpg' },
       { key: 'stormOverflows', icon: '💧', title: 'Storm Overflows', photo: '/images/storm-overflow.jpg' },
       { key: 'floodMonitoring', icon: '🌧️', title: 'River & Sea Levels', photo: '/images/river-levels.jpg' },
-      // No stock photo asset for this one — it's a plain data list with no
-      // natural thumbnail to borrow, so it falls back to the row-style card.
-      { key: 'bathingWater', icon: '🏖️', title: 'Bathing Water Quality' },
+      { key: 'bathingWater', icon: '🏖️', title: 'Bathing Water Quality', photo: '/images/bathing-water.jpg' },
     ];
 
     function renderHubGrid() {
@@ -1263,9 +1259,10 @@
     }
 
     function renderCouncilNewsDetail(cn) {
+      const banner = '<img class="card-banner" src="/images/council-news.jpg" alt="" />';
       const title = '🏛️ Cornwall Council News';
       if (!cn || !cn.items || cn.items.length === 0) {
-        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">No council news available right now</p></div>';
+        return '<div class="card">' + banner + '<h2>' + title + '</h2><p class="unavailable">No council news available right now</p></div>';
       }
       const cards = cn.items.slice(0, 15).map(i => {
         const img = i.image
@@ -1277,7 +1274,7 @@
           + '<div class="feed-card-title">' + i.title + '</div>'
           + '</div></a>';
       }).join('');
-      return '<div class="card"><h2>' + title + '</h2><div class="feed-grid">' + cards + '</div></div>';
+      return '<div class="card">' + banner + '<h2>' + title + '</h2><div class="feed-grid">' + cards + '</div></div>';
     }
 
     function trainStatusMarkup(s) {
@@ -1473,10 +1470,14 @@
     }
 
     function renderBathingWaterDetail(bw) {
+      const banner = '<img class="card-banner" src="/images/bathing-water.jpg" alt="" />';
       const title = '🏖️ Bathing Water Quality';
       if (!bw || bw.unavailable || !bw.sites || bw.sites.length === 0) {
-        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">No bathing water data available right now</p></div>';
+        return '<div class="card">' + banner + '<h2>' + title + '</h2><p class="unavailable">No bathing water data available right now' + (bw && bw.error ? ' (' + bw.error + ')' : '') + '</p></div>';
       }
+      const ratingsNote = bw.ratingsAvailable
+        ? ''
+        : '<p class="section-subtitle">Beach locations are live; official season classifications aren\'t coming through from the Environment Agency feed yet — check back once that\'s sorted.</p>';
       const rows = bw.sites.map(s => {
         const cls = s.classification ? s.classification.toLowerCase().replace(/[^a-z]/g, '-') : 'unknown';
         const classBadge = '<span class="bw-badge ' + cls + '">' + (s.classification || 'No rating') + '</span>';
@@ -1489,7 +1490,7 @@
           + '<div class="overflow-meta">' + mapLink + '</div>'
           + '</div>';
       }).join('');
-      return '<div class="card"><h2>' + title + '</h2><p class="section-subtitle">Environment Agency classifications — official ratings are assessed each bathing season; risk badges reflect current short-term pollution forecasts</p>' + rows + '</div>';
+      return '<div class="card">' + banner + '<h2>' + title + '</h2><p class="section-subtitle">Environment Agency classifications — official ratings are assessed each bathing season; risk badges reflect current short-term pollution forecasts</p>' + ratingsNote + rows + '</div>';
     }
 
     document.getElementById('scanBtn').addEventListener('click', scanLocation);
