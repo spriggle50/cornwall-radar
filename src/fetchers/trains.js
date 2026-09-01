@@ -44,12 +44,28 @@ async function getTrainDepartures({ lat = DEFAULT_LAT, lon = DEFAULT_LON } = {})
     url = new URL(KEYLESS_RELAY_BASE_URL + '/' + station.crs);
   }
 
-  const res = await fetch(url, { headers });
-  if (!res.ok) {
-    const bodyText = await res.text().catch(() => '');
-    throw new Error(`Train departures request failed (${station.name}): ${res.status} ${res.statusText}${bodyText ? ' — ' + bodyText.slice(0, 200) : ''}`);
+  // Both this gateway and the fallback relay are third-party services this
+  // app doesn't control, so a hard timeout stops one slow response from
+  // hanging the whole dashboard refresh.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  let res;
+  try {
+    res = await fetch(url, { headers, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
   }
-  const data = await res.json();
+
+  const rawText = await res.text();
+  if (!res.ok) {
+    throw new Error(`Train departures request failed (${station.name}): ${res.status} ${res.statusText}${rawText ? ' — ' + rawText.slice(0, 200) : ''}`);
+  }
+  let data;
+  try {
+    data = JSON.parse(rawText);
+  } catch (parseErr) {
+    throw new Error(`Train departures request failed (${station.name}): unexpected non-JSON response — ${rawText.slice(0, 200)}`);
+  }
 
   const services = (data.trainServices || []).map((s) => ({
     scheduledTime: s.std || null,
