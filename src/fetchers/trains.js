@@ -1,23 +1,29 @@
-// Live train departures — National Rail's Darwin/LDBWS real-time feed,
-// reached via Huxley2 (a JSON proxy for LDBWS's native SOAP API, so this
-// project never has to speak SOAP: https://github.com/davwheat/Huxley2).
+// Live train departures — National Rail's Darwin/LDBWS real-time feed.
 //
 // Two ways to run this:
-//  1) Set RAILDATA_API_KEY — a free LDBWS access token from the Rail Data
-//     Marketplace (https://raildata.org.uk, the current official successor
-//     to the old realtime.nationalrail.co.uk registration page). When set,
-//     requests go to Huxley2's own public demo instance with that token
-//     attached, which is the properly-licensed way to do this.
+//  1) Set RAILDATA_API_KEY — a free subscription key from the Rail Data
+//     Marketplace (https://raildata.org.uk). This is the CURRENT official
+//     way to get LDBWS access, and it's a modern REST/JSON gateway, not the
+//     old SOAP service — the key goes in an `x-apikey` header straight to
+//     RDM's own GetDepartureBoard endpoint. (An earlier version of this
+//     file wrongly assumed an RDM key was a classic NRE SOAP AccessToken
+//     and tried to pass it as a query-string token to a third-party SOAP-
+//     to-JSON proxy instead — that mismatch is what caused the 500s. This
+//     is the corrected, actually-matching request shape, confirmed against
+//     a real working integration's source rather than guessed.)
 //  2) Leave it unset — falls back to a free, keyless, community-hosted
-//     Huxley2 instance (national-rail-api.davwheat.dev) that already has a
-//     token configured server-side. Convenient for getting started, but
-//     it's a volunteer-run service with (its own words) "zero guarantees
-//     of uptime", so RAILDATA_API_KEY is the more reliable long-term option.
+//     JSON relay (national-rail-api.davwheat.dev, a public instance of
+//     https://github.com/davwheat/Huxley2 with its own token configured
+//     server-side). Convenient for getting started, but it's a
+//     volunteer-run service with (its own words) "zero guarantees of
+//     uptime", so RAILDATA_API_KEY is the more reliable long-term option.
+//     Both paths return the same underlying Darwin JSON shape, so parsing
+//     below doesn't need to care which one served the request.
 const { nearestStation } = require('../lib/cornwallStations');
 
 const RAILDATA_API_KEY = process.env.RAILDATA_API_KEY;
-const HUXLEY_BASE_WITH_KEY = 'https://huxley2.azurewebsites.net';
-const HUXLEY_BASE_KEYLESS = 'https://national-rail-api.davwheat.dev';
+const RAILDATA_BASE_URL = 'https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120/GetDepartureBoard';
+const KEYLESS_RELAY_BASE_URL = 'https://national-rail-api.davwheat.dev/departures';
 
 const DEFAULT_LAT = 50.2632; // Truro, Cornwall — same default as the rest of the app
 const DEFAULT_LON = -5.0510;
@@ -28,23 +34,27 @@ async function getTrainDepartures({ lat = DEFAULT_LAT, lon = DEFAULT_LON } = {})
     return { source: 'National Rail', configured: true, station: null, services: [], message: 'Could not resolve a nearby station' };
   }
 
-  const base = RAILDATA_API_KEY ? HUXLEY_BASE_WITH_KEY : HUXLEY_BASE_KEYLESS;
-  const url = new URL('/departures/' + station.crs, base);
-  url.searchParams.set('expand', 'false');
-  if (RAILDATA_API_KEY) url.searchParams.set('accessToken', RAILDATA_API_KEY);
+  const headers = { 'User-Agent': 'CornwallRadar/1.0 (local conditions dashboard)' };
+  let url;
+  if (RAILDATA_API_KEY) {
+    url = new URL(RAILDATA_BASE_URL + '/' + station.crs);
+    url.searchParams.set('numRows', '15');
+    headers['x-apikey'] = RAILDATA_API_KEY;
+  } else {
+    url = new URL(KEYLESS_RELAY_BASE_URL + '/' + station.crs);
+  }
 
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'CornwallRadar/1.0 (local conditions dashboard)' },
-  });
+  const res = await fetch(url, { headers });
   if (!res.ok) {
-    throw new Error(`Train departures request failed (${station.name}): ${res.status} ${res.statusText}`);
+    const bodyText = await res.text().catch(() => '');
+    throw new Error(`Train departures request failed (${station.name}): ${res.status} ${res.statusText}${bodyText ? ' — ' + bodyText.slice(0, 200) : ''}`);
   }
   const data = await res.json();
 
   const services = (data.trainServices || []).map((s) => ({
     scheduledTime: s.std || null,
-    // Huxley2/Darwin puts either an updated time ("17:56") or a status
-    // word ("On time", "Cancelled", "Delayed") in etd depending on what's
+    // Darwin puts either an updated time ("17:56") or a status word
+    // ("On time", "Cancelled", "Delayed") in etd depending on what's
     // happened to the service — both are handled on the display side.
     expected: s.etd || null,
     platform: s.platform || null,
@@ -58,7 +68,7 @@ async function getTrainDepartures({ lat = DEFAULT_LAT, lon = DEFAULT_LON } = {})
   }));
 
   return {
-    source: RAILDATA_API_KEY ? 'National Rail (Huxley2)' : 'National Rail (Huxley2 community relay)',
+    source: RAILDATA_API_KEY ? 'National Rail (Rail Data Marketplace)' : 'National Rail (community relay)',
     configured: true,
     station: { name: data.locationName || station.name, crs: data.crs || station.crs, distanceKm: station.distanceKm },
     services,
