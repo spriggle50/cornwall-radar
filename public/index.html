@@ -220,16 +220,16 @@
     .level-value { text-align: right; font-weight: 700; }
     .level-meta { color: var(--text-3); font-size: 0.76rem; font-weight: 400; }
 
-    .bw-row { padding: 9px 0; border-top: 1px solid var(--border); font-size: 0.9rem; }
-    .bw-row:first-child { border-top: none; padding-top: 2px; }
-    .bw-name { font-weight: 600; }
-    .bw-badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; }
-    .bw-badge.excellent { background: #dcfce7; color: #15803d; }
-    .bw-badge.good { background: #dbeafe; color: #1d4ed8; }
-    .bw-badge.sufficient { background: #fef3c7; color: #b45309; }
-    .bw-badge.poor { background: #fee2e2; color: #b91c1c; }
-    .bw-badge.no-rating, .bw-badge.unknown { background: #e5e7eb; color: #4b5563; }
-    .bw-risk-badge { font-size: 0.76rem; font-weight: 700; color: #b45309; }
+    .bw-search {
+      width: 100%; box-sizing: border-box; padding: 10px 13px; margin: 4px 0 14px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.9rem;
+      font-family: inherit; background: #f9fbfa;
+    }
+    .bw-widget-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;
+    }
+    .bw-widget-item { border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: #f9fbfa; }
+    .bw-widget-item iframe { display: block; }
     .traffic-item, .bus-item { padding: 10px 0; border-top: 1px solid var(--border); font-size: 0.9rem; }
     .traffic-item:first-child, .bus-item:first-child { border-top: none; padding-top: 2px; }
     .traffic-item .road, .bus-item .line { font-weight: 700; }
@@ -648,9 +648,7 @@
       if (key === 'bathingWater') {
         const bw = d.bathingWater;
         if (!bw || bw.unavailable || !bw.sites || !bw.sites.length) return 'Unavailable right now';
-        const atRisk = bw.sites.filter(s => s.riskLevel && /increased|risk/i.test(s.riskLevel)).length;
-        if (atRisk) return atRisk + ' beach(es) with a raised pollution risk';
-        return bw.sites.length + ' Cornwall beaches monitored';
+        return bw.sites.length + ' Cornwall beaches — live EA ratings';
       }
       return '';
     }
@@ -969,7 +967,11 @@
     }
 
     function renderWildlifeDetail(wl) {
-      const banner = '<img class="card-banner" src="/images/wildlife-hero.jpg" alt="" />';
+      // The bird in this photo has its head in the upper third of the
+      // frame, and the default centred object-fit crop was cutting straight
+      // through it on the wide banner aspect ratio — bias the crop upward
+      // so the whole head stays in frame.
+      const banner = '<img class="card-banner" src="/images/wildlife-hero.jpg" alt="" style="object-position: 50% 22%;" />';
       if (!wl || wl.unavailable || !wl.sightings || wl.sightings.length === 0) {
         return '<div class="card">' + banner + '<h2>🦡 Wildlife Sightings</h2><p class="unavailable">No recent sightings available right now</p></div>';
       }
@@ -1469,28 +1471,40 @@
         + '</div>';
     }
 
+    // Each site's live classification and pollution-risk data comes from
+    // the Environment Agency's own official embeddable widget, loaded
+    // straight into the visitor's browser as an iframe — not fetched by
+    // this app's server. That's a deliberate choice, not a shortcut: the
+    // EA's Linked Data API sits behind a gateway that blocks server-to-
+    // server requests to this one sub-service with a bare 403 (see
+    // bathingWater.js for the full story), so re-fetching and re-drawing
+    // this data ourselves kept breaking. The widget is the EA's own
+    // display, always current, and immune to that block since it's the
+    // visitor loading it, not us.
     function renderBathingWaterDetail(bw) {
       const banner = '<img class="card-banner" src="/images/bathing-water.jpg" alt="" />';
       const title = '🏖️ Bathing Water Quality';
       if (!bw || bw.unavailable || !bw.sites || bw.sites.length === 0) {
         return '<div class="card">' + banner + '<h2>' + title + '</h2><p class="unavailable">No bathing water data available right now' + (bw && bw.error ? ' (' + bw.error + ')' : '') + '</p></div>';
       }
-      const ratingsNote = bw.ratingsAvailable
-        ? ''
-        : '<p class="section-subtitle">Beach locations are live; official season classifications aren\'t coming through from the Environment Agency feed yet — check back once that\'s sorted.</p>';
-      const rows = bw.sites.map(s => {
-        const cls = s.classification ? s.classification.toLowerCase().replace(/[^a-z]/g, '-') : 'unknown';
-        const classBadge = '<span class="bw-badge ' + cls + '">' + (s.classification || 'No rating') + '</span>';
-        const riskBadge = (s.riskLevel && /increased|risk/i.test(s.riskLevel))
-          ? '<span class="bw-risk-badge">⚠️ ' + s.riskLevel + '</span>'
-          : '';
-        const mapLink = '<a href="https://www.google.com/maps?q=' + s.lat + ',' + s.lon + '" target="_blank">View location</a>';
-        return '<div class="bw-row">'
-          + '<span class="bw-name">' + s.name + '</span> ' + classBadge + ' ' + riskBadge
-          + '<div class="overflow-meta">' + mapLink + '</div>'
+      const items = bw.sites.map(s => {
+        const safeName = s.name.replace(/"/g, '&quot;');
+        return '<div class="bw-widget-item" data-name="' + s.name.toLowerCase() + '">'
+          + '<iframe loading="lazy" scrolling="no" frameborder="0" src="' + s.widgetUrl + '" title="' + safeName + ' bathing water quality" style="width:100%;height:292px;border:0;"></iframe>'
           + '</div>';
       }).join('');
-      return '<div class="card">' + banner + '<h2>' + title + '</h2><p class="section-subtitle">Environment Agency classifications — official ratings are assessed each bathing season; risk badges reflect current short-term pollution forecasts</p>' + ratingsNote + rows + '</div>';
+      return '<div class="card">' + banner + '<h2>' + title + '</h2>'
+        + '<p class="section-subtitle">Live widgets straight from the Environment Agency — official classifications and any current pollution-risk warnings for every designated bathing water in Cornwall.</p>'
+        + '<input type="text" class="bw-search" placeholder="Search ' + bw.sites.length + ' Cornwall beaches…" oninput="filterBathingWaterWidgets(this.value)">'
+        + '<div class="bw-widget-grid" id="bwWidgetGrid">' + items + '</div>'
+        + '</div>';
+    }
+
+    function filterBathingWaterWidgets(query) {
+      const q = query.trim().toLowerCase();
+      document.querySelectorAll('#bwWidgetGrid .bw-widget-item').forEach(el => {
+        el.hidden = q.length > 0 && !el.dataset.name.includes(q);
+      });
     }
 
     document.getElementById('scanBtn').addEventListener('click', scanLocation);
