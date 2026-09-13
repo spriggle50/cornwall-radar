@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cornwall Radar</title>
   <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#0b6e4f" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/brand/icon-32.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/brand/icon-192.png" />
+  <link rel="apple-touch-icon" href="/brand/icon-192.png" />
+  <meta name="theme-color" content="#0d5b64" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
@@ -40,10 +43,11 @@
     }
 
     header {
-      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+      background: linear-gradient(135deg, #12283f 0%, #0d5b64 48%, #076b4a 100%);
       color: #fff; padding: 22px 18px 26px;
     }
-    header h1 { margin: 0; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
+    header h1 { margin: 0; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; display: flex; align-items: center; gap: 10px; }
+    header h1 img { width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0; }
     header p { margin: 4px 0 0; opacity: 0.88; font-size: 0.88rem; font-weight: 500; }
 
     .location-wrap { max-width: 640px; margin: -16px auto 0; padding: 0 14px; position: relative; z-index: 2; }
@@ -449,7 +453,7 @@
   <header>
     <div class="header-top">
       <div class="header-top-text">
-        <h1>🌤️ Cornwall Radar</h1>
+        <h1><img src="/brand/icon-96.png" alt="" /> Cornwall Radar</h1>
         <p>The place to check before heading out</p>
       </div>
       <button class="account-btn" id="accountBtn" title="Account">👤</button>
