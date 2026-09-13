@@ -15,6 +15,8 @@
 // mapping used below — flagged here in case a future status code ever
 // shows up that isn't one of those three, in which case treat it as
 // unknown rather than assuming which of the three it is.
+const { fetchWithTimeout } = require('../lib/fetchWithTimeout');
+
 const FEATURE_SERVICE_URL = 'https://services-eu1.arcgis.com/OMdMOtfhATJPcHe3/arcgis/rest/services/NEH_outlets_PROD/FeatureServer/0/query';
 
 // Same Cornwall bounding box used for wildlife sightings (wildlife.js) —
@@ -40,7 +42,7 @@ async function getStormOverflows({ limit = 60 } = {}) {
   url.searchParams.set('spatialRel', 'esriSpatialRelIntersects');
   url.searchParams.set('resultRecordCount', String(limit));
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { 'User-Agent': 'CornwallRadar/1.0 (local conditions dashboard)' },
   });
   if (!res.ok) {

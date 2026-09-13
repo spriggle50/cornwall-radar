@@ -20,6 +20,8 @@
 //   - Data arrives in the DATEX II protocol — a deeply nested structure,
 //     not the flat shape you'd guess at first glance.
 
+const { fetchWithTimeout } = require('../lib/fetchWithTimeout');
+
 const NATIONAL_HIGHWAYS_API_KEY = process.env.NATIONAL_HIGHWAYS_API_KEY;
 
 // Road NUMBER alone isn't reliable — A30/A38 also run through other
@@ -59,7 +61,7 @@ async function getRoadClosures() {
   });
   const url = `https://api.data.nationalhighways.co.uk/roads/v2.0/closures?${params.toString()}`;
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: {
       'Ocp-Apim-Subscription-Key': NATIONAL_HIGHWAYS_API_KEY,
       'X-Response-MediaType': 'application/json',

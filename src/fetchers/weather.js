@@ -3,6 +3,8 @@
 // Default location: Truro, Cornwall (central-ish reference point). A real per-user
 // location will be passed in once saved_locations exist (Phase 2).
 
+const { fetchWithTimeout } = require('../lib/fetchWithTimeout');
+
 const DEFAULT_LAT = 50.2632;
 const DEFAULT_LON = -5.0510;
 
@@ -15,7 +17,7 @@ async function getWeather(lat = DEFAULT_LAT, lon = DEFAULT_LON) {
   url.searchParams.set('timezone', 'Europe/London');
   url.searchParams.set('forecast_days', '4');
 
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   if (!res.ok) {
     throw new Error(`Open-Meteo request failed: ${res.status} ${res.statusText}`);
   }

@@ -13,6 +13,7 @@
 
 const { nearestTown } = require('../lib/cornwallTowns');
 const { getRoadClosures } = require('./nationalHighways');
+const { fetchWithTimeout } = require('../lib/fetchWithTimeout');
 
 const TOMTOM_API_KEY = process.env.TOMTOM_API_KEY;
 
@@ -45,7 +46,7 @@ async function fetchTomTomIncidents(lat, lon, radiusMeters) {
 
   const url = `https://api.tomtom.com/traffic/services/5/incidentDetails?${params.toString()}`;
 
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');
     throw new Error(`TomTom request failed: ${res.status} ${res.statusText}${errBody ? ' — ' + errBody.slice(0, 200) : ''}`);

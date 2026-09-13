@@ -6,6 +6,8 @@
 // bounding box + countrycodes filter so "Truro" doesn't match Truro,
 // Nova Scotia.
 
+const { fetchWithTimeout } = require('../lib/fetchWithTimeout');
+
 const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search';
 
 // Cornwall bounding box, same as wildlife.js/buses.js — minLon,minLat,maxLon,maxLat
@@ -24,7 +26,7 @@ async function geocodeLocation(query) {
   url.searchParams.set('viewbox', CORNWALL_VIEWBOX);
   url.searchParams.set('bounded', '1');
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { 'User-Agent': 'CornwallRadar/0.1 (contact: set-your-contact-email-in-env)' },
   });
   if (!res.ok) {

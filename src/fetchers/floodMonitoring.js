@@ -17,8 +17,10 @@ const SEVERITY_LABELS = {
   4: 'Warning No Longer In Force',
 };
 
+const { fetchWithTimeout } = require('../lib/fetchWithTimeout');
+
 async function fetchJson(url) {
-  const res = await fetch(url, { headers: { 'User-Agent': 'CornwallRadar/1.0 (local conditions dashboard)' } });
+  const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'CornwallRadar/1.0 (local conditions dashboard)' } });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }

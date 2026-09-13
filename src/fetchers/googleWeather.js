@@ -11,6 +11,8 @@
 // documented Weather API contract; read defensively since this project's
 // sandbox can't make a live call to double-check the exact shape.
 
+const { fetchWithTimeout } = require('../lib/fetchWithTimeout');
+
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 
 async function getWeatherDetail(lat, lon) {
@@ -29,7 +31,7 @@ async function getWeatherDetail(lat, lon) {
   });
   const url = `https://weather.googleapis.com/v1/currentConditions:lookup?${params.toString()}`;
 
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');
     throw new Error(`Google Weather API request failed: ${res.status} ${res.statusText}${errBody ? ' — ' + errBody.slice(0, 200) : ''}`);

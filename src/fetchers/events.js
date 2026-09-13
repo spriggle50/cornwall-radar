@@ -19,6 +19,7 @@
 // Cornish town.
 
 const { nearestTown } = require('../lib/cornwallTowns');
+const { fetchWithTimeout } = require('../lib/fetchWithTimeout');
 
 const TICKETMASTER_API_KEY = process.env.TICKETMASTER_API_KEY;
 
@@ -44,7 +45,7 @@ async function fetchTicketmaster(searches) {
       apikey: TICKETMASTER_API_KEY,
     });
     const url = `https://app.ticketmaster.com/discovery/v2/events.json?${params.toString()}`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       throw new Error(`Ticketmaster request failed (${search.label}): ${res.status} ${res.statusText}${body ? ' — ' + body.slice(0, 200) : ''}`);

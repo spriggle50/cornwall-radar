@@ -9,6 +9,8 @@
 // defensively (optional chaining, fallbacks) so a minor field-shape drift
 // shows up as a missing stat rather than a crash.
 
+const { fetchWithTimeout } = require('../lib/fetchWithTimeout');
+
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 
 async function getPollen(lat, lon) {
@@ -29,7 +31,7 @@ async function getPollen(lat, lon) {
   });
   const url = `https://pollen.googleapis.com/v1/forecast:lookup?${params.toString()}`;
 
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');
     throw new Error(`Google Pollen API request failed: ${res.status} ${res.statusText}${errBody ? ' — ' + errBody.slice(0, 200) : ''}`);

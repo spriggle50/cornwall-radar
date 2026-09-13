@@ -17,6 +17,7 @@
 // confirmed-working reference avoids trusting an unverified schema.
 
 const { nearestTown } = require('../lib/cornwallTowns');
+const { fetchWithTimeout } = require('../lib/fetchWithTimeout');
 
 const BODS_API_KEY = process.env.BODS_API_KEY;
 
@@ -64,7 +65,7 @@ async function getLiveBuses({ lat, lon, boundingBox } = {}) {
 
   const url = `https://data.bus-data.dft.gov.uk/api/v1/datafeed?boundingBox=${box}&api_key=${BODS_API_KEY}`;
 
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');
     throw new Error(`BODS request failed: ${res.status} ${res.statusText}${errBody ? ' — ' + errBody.slice(0, 200) : ''}`);

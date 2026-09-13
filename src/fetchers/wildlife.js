@@ -3,6 +3,8 @@
 // Nominatim (OpenStreetMap) used only if/when reverse-geocoding a sighting's
 // coordinates into a human-readable place name is needed for display.
 
+const { fetchWithTimeout } = require('../lib/fetchWithTimeout');
+
 const GBIF_OCCURRENCE_URL = 'https://api.gbif.org/v1/occurrence/search';
 const NOMINATIM_REVERSE_URL = 'https://nominatim.openstreetmap.org/reverse';
 
@@ -22,7 +24,7 @@ async function getRecentSightings({ limit = 20 } = {}) {
   url.searchParams.set('order', 'desc');
   url.searchParams.set('sort', 'eventDate');
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { 'User-Agent': 'CornwallRadar/0.1 (contact: set-your-contact-email-in-env)' },
   });
   if (!res.ok) {
@@ -60,7 +62,7 @@ async function reverseGeocode(lat, lon) {
   url.searchParams.set('lon', lon);
   url.searchParams.set('format', 'jsonv2');
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { 'User-Agent': 'CornwallRadar/0.1 (contact: set-your-contact-email-in-env)' },
   });
   if (!res.ok) {

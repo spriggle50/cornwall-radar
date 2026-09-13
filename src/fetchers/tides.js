@@ -12,6 +12,8 @@
 //      (e.g. "&#x28;3.9m&#x29;" instead of a literal "(3.9m)"), so the
 //      tide-line regex finds nothing until entities are decoded first.
 
+const { fetchWithTimeout } = require('../lib/fetchWithTimeout');
+
 const CORNWALL_TIDE_STATIONS = [
   { slug: 'falmouth', name: 'Falmouth', lat: 50.152, lon: -5.065 },
   { slug: 'newlyn', name: 'Newlyn', lat: 50.101, lon: -5.543 },
@@ -50,7 +52,7 @@ async function getTideTimes({ lat, lon } = {}) {
   const station = lat != null && lon != null ? nearestTideStation(lat, lon) : CORNWALL_TIDE_STATIONS[0];
 
   const rssUrl = `https://www.tidetimes.org.uk/${station.slug}-tide-times.rss`;
-  const res = await fetch(rssUrl, {
+  const res = await fetchWithTimeout(rssUrl, {
     headers: { 'User-Agent': 'CornwallRadar/0.1 (contact: set-your-contact-email-in-env)' },
   });
   if (!res.ok) {
