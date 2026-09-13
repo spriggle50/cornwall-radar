@@ -536,6 +536,18 @@
       }
     }
 
+    // Lets a signed-in user jump the main dashboard straight to one of
+    // their saved locations, the same way typing it into the search bar
+    // would — without them having to retype the postcode/town every time.
+    function viewSavedLocation(lat, lon, label) {
+      currentLocation = { lat, lon, label };
+      saveLocation(currentLocation);
+      updateLocationStatus();
+      loadDashboard();
+      closeAccountPanel();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
     function useMyLocation() {
       if (!navigator.geolocation) return;
       const status = document.getElementById('locationStatus');
@@ -1722,6 +1734,7 @@
         ? a.locations.map((loc) => '<div class="location-row">'
             + '<div><div class="location-row-label">' + loc.label + '</div>'
             + '<div class="location-row-postcode">' + loc.postcode + '</div></div>'
+            + '<button class="btn-secondary" style="margin-right:6px;" onclick="viewSavedLocation(' + loc.lat + ',' + loc.lng + ',\'' + loc.label.replace(/'/g, "\\'") + '\')">View</button>'
             + '<button class="location-row-remove" onclick="removeLocation(\'' + loc.id + '\')">Remove</button>'
             + '</div>').join('')
         : '<p class="account-note">No saved locations yet.</p>';
