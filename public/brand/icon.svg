@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <clipPath id="badgeClipV4"><rect x="0" y="0" width="512" height="512" rx="130"/></clipPath>
+
+    <linearGradient id="bgV4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"  stop-color="#12283f"/>
+      <stop offset="48%" stop-color="#0d5b64"/>
+      <stop offset="100%" stop-color="#076b4a"/>
+    </linearGradient>
+
+    <radialGradient id="glowV4" cx="198" cy="165" r="230" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"  stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="beamV4" x1="198" y1="165" x2="470" y2="215" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"  stop-color="#FEF3C7" stop-opacity="0.95"/>
+      <stop offset="55%" stop-color="#FBBF24" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#FBBF24" stop-opacity="0"/>
+    </linearGradient>
+
+    <radialGradient id="lampV4" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFFBEB"/>
+      <stop offset="60%" stop-color="#FDE68A"/>
+      <stop offset="100%" stop-color="#FBBF24" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Cylindrical shading: shadow / midtone / highlight / midtone / shadow, so the round tower reads as round, not flat -->
+    <linearGradient id="towerV4" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#93A6B0"/>
+      <stop offset="24%"  stop-color="#D9E3E7"/>
+      <stop offset="46%"  stop-color="#FFFFFF"/>
+      <stop offset="68%"  stop-color="#E4ECEF"/>
+      <stop offset="100%" stop-color="#9DAEB7"/>
+    </linearGradient>
+    <radialGradient id="rockV4" cx="35%" cy="20%" r="90%">
+      <stop offset="0%"  stop-color="#123449"/>
+      <stop offset="100%" stop-color="#081e2b"/>
+    </radialGradient>
+
+    <clipPath id="towerClipV4">
+      <path d="M183,200 C177,260 171,320 165,380 C163,395 162,408 161,420 L235,420 C234,408 233,395 231,380 C225,320 219,260 213,200 Z"/>
+    </clipPath>
+
+    <!-- Painted brickwork: a running-bond course so the tower reads as built, not moulded -->
+    <pattern id="brickPatternV4" patternUnits="userSpaceOnUse" width="24" height="24">
+      <rect width="24" height="24" fill="#B7C4CB"/>
+      <rect x="1" y="1" width="10" height="10" rx="1" fill="#F2F6F7"/>
+      <rect x="13" y="1" width="10" height="10" rx="1" fill="#E7EDEF"/>
+      <rect x="7" y="13" width="10" height="10" rx="1" fill="#EEF3F5"/>
+      <rect x="19" y="13" width="5" height="10" rx="1" fill="#E2E9EC"/>
+      <rect x="0" y="13" width="5" height="10" rx="1" fill="#E2E9EC"/>
+    </pattern>
+
+    <!-- Coursed stone for the foundation -->
+    <pattern id="stonePatternV4" patternUnits="userSpaceOnUse" width="34" height="18">
+      <rect width="34" height="18" fill="#0a0d10"/>
+      <rect x="1" y="1" width="14" height="7" rx="1" fill="#1c2328"/>
+      <rect x="17" y="1" width="16" height="7" rx="1" fill="#181e22"/>
+      <rect x="9" y="10" width="16" height="7" rx="1" fill="#1a2126"/>
+      <rect x="27" y="10" width="7" height="7" rx="1" fill="#161c20"/>
+      <rect x="0" y="10" width="7" height="7" rx="1" fill="#161c20"/>
+    </pattern>
+  </defs>
+
+  <!-- Card -->
+  <rect x="0" y="0" width="512" height="512" rx="130" fill="url(#bgV4)"/>
+
+  <g clip-path="url(#badgeClipV4)">
+    <!-- Night sky -->
+    <circle cx="90" cy="80" r="3.2" fill="#ffffff" opacity="0.8"/>
+    <circle cx="134" cy="52" r="2.2" fill="#ffffff" opacity="0.6"/>
+    <circle cx="58" cy="152" r="2.8" fill="#ffffff" opacity="0.5"/>
+    <circle cx="112" cy="196" r="1.8" fill="#ffffff" opacity="0.45"/>
+    <circle cx="152" cy="96" r="1.6" fill="#ffffff" opacity="0.55"/>
+    <circle cx="78" cy="230" r="1.6" fill="#ffffff" opacity="0.35"/>
+
+    <!-- Ambient glow -->
+    <circle cx="198" cy="165" r="230" fill="url(#glowV4)"/>
+
+    <!-- Radar "ping" arcs -->
+    <path d="M234.3,148.1 A40,40 0 0,1 226.3,193.3" fill="none" stroke="#FDE9B8" stroke-opacity="0.85" stroke-width="5" stroke-linecap="round"/>
+    <path d="M256.9,137.5 A65,65 0 0,1 244.0,211.0" fill="none" stroke="#FDE9B8" stroke-opacity="0.60" stroke-width="5" stroke-linecap="round"/>
+    <path d="M279.6,127.0 A90,90 0 0,1 261.6,228.6" fill="none" stroke="#FDE9B8" stroke-opacity="0.40" stroke-width="5" stroke-linecap="round"/>
+
+    <!-- Light beam -->
+    <path d="M198,165 L493,113 L458,315 Z" fill="url(#beamV4)"/>
+
+    <!-- Sea -->
+    <path d="M-10,440 C90,424 150,424 240,439 C330,455 370,455 522,434" fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="5" stroke-linecap="round"/>
+    <path d="M-10,462 C110,449 175,449 250,461 C335,474 380,471 522,454" fill="none" stroke="#ffffff" stroke-opacity="0.15" stroke-width="5" stroke-linecap="round"/>
+
+    <!-- Rocky outcrop -->
+    <path d="M96,466 L130,408 L153,423 L177,396 L198,413 L221,391 L248,419 L271,407 L304,466 Z" fill="url(#rockV4)"/>
+    <path d="M130,408 L153,423 L145,438 L114,431 Z" fill="#ffffff" opacity="0.05"/>
+    <path d="M221,391 L248,419 L237,436 L204,421 Z" fill="#ffffff" opacity="0.06"/>
+
+    <!-- Tower: rounder cylinder profile with true entasis, painted brick under a soft cylindrical light -->
+    <path d="M183,200 C177,260 171,320 165,380 C163,395 162,408 161,420 L235,420 C234,408 233,395 231,380 C225,320 219,260 213,200 Z" fill="url(#brickPatternV4)"/>
+    <path d="M183,200 C177,260 171,320 165,380 C163,395 162,408 161,420 L235,420 C234,408 233,395 231,380 C225,320 219,260 213,200 Z" fill="url(#towerV4)" opacity="0.6" style="mix-blend-mode:multiply"/>
+
+    <!-- Faint mortar courses reading through the paint -->
+    <g clip-path="url(#towerClipV4)" stroke="#8492a0" stroke-opacity="0.16" stroke-width="1.5">
+      <line x1="150" y1="248" x2="246" y2="248"/>
+      <line x1="150" y1="278" x2="246" y2="278"/>
+      <line x1="150" y1="308" x2="246" y2="308"/>
+      <line x1="150" y1="338" x2="246" y2="338"/>
+      <line x1="150" y1="368" x2="246" y2="368"/>
+      <line x1="150" y1="398" x2="246" y2="398"/>
+    </g>
+
+    <!-- Classic black band near the top -- the single most recognisable lighthouse cue -->
+    <g clip-path="url(#towerClipV4)">
+      <rect x="150" y="218" width="96" height="20" fill="#14181B"/>
+    </g>
+
+    <!-- Windows -->
+    <ellipse cx="198" cy="290" rx="6.5" ry="9" fill="#14181B" opacity="0.55"/>
+    <ellipse cx="198" cy="366" rx="7.5" ry="10" fill="#14181B" opacity="0.55"/>
+
+    <!-- Door -->
+    <path d="M187,420 L187,401 A11,11 0 0,1 209,401 L209,420 Z" fill="#14181B" opacity="0.75"/>
+
+    <!-- Base plinth: coursed stone foundation -->
+    <path d="M154,420 L242,420 L251,438 L145,438 Z" fill="url(#stonePatternV4)"/>
+
+    <!-- Gallery walkway, black, projecting past the tower wall like a real lighthouse gallery -->
+    <path d="M172,196 L224,196 L232,208 L164,208 Z" fill="#14181B"/>
+    <ellipse cx="198" cy="196" rx="26" ry="6" fill="url(#towerV4)"/>
+    <g stroke="#14181B" stroke-width="2.4" stroke-linecap="round">
+      <line x1="176" y1="191" x2="176" y2="200"/>
+      <line x1="187" y1="189.5" x2="187" y2="199.5"/>
+      <line x1="198" y1="189" x2="198" y2="199.5"/>
+      <line x1="209" y1="189.5" x2="209" y2="199.5"/>
+      <line x1="220" y1="191" x2="220" y2="200"/>
+    </g>
+
+    <!-- Lamp room: black lantern housing, glazing bars, warm lamp glowing inside -->
+    <rect x="181" y="158" width="34" height="34" rx="3" fill="#14181B"/>
+    <rect x="185" y="162" width="26" height="26" fill="#0d1013"/>
+    <g stroke="#3a4147" stroke-width="2">
+      <line x1="198" y1="162" x2="198" y2="188"/>
+      <line x1="185" y1="175" x2="211" y2="175"/>
+    </g>
+
+    <!-- Roof: black dome cap -->
+    <path d="M178,158 L218,158 L198,128 Z" fill="#14181B"/>
+    <ellipse cx="198" cy="158" rx="20" ry="4.5" fill="#0d1013"/>
+
+    <!-- Finial -->
+    <line x1="198" y1="128" x2="198" y2="114" stroke="#14181B" stroke-width="2.6"/>
+    <circle cx="198" cy="110" r="5" fill="#14181B"/>
+
+    <!-- Lit lamp -->
+    <circle cx="198" cy="175" r="14" fill="url(#lampV4)"/>
+    <circle cx="198" cy="175" r="5" fill="#FFFBEB"/>
+  </g>
+</svg>
