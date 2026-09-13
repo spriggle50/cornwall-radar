@@ -11,6 +11,9 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Only used once SUPABASE_URL/SUPABASE_ANON_KEY are set on the server —
+       see accountPanel's JS below. Harmless to load unconditionally. -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <style>
     :root {
       color-scheme: light;
@@ -365,6 +368,61 @@
     }
     .event-tickets-btn:hover { background: #F59E0B; }
 
+    /* ── Account panel — sign-in, saved locations, morning digest, billing.
+       Reuses .card/.back-btn from the rest of the site rather than
+       inventing a new visual language for one panel. */
+    .account-btn {
+      background: rgba(255,255,255,0.18); border: none; color: #fff; width: 38px; height: 38px;
+      border-radius: 50%; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center;
+      justify-content: center; flex-shrink: 0;
+    }
+    .account-btn:hover { background: rgba(255,255,255,0.28); }
+    .header-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .header-top-text { min-width: 0; }
+
+    .account-status-badge {
+      display: inline-block; font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.04em; padding: 3px 10px; border-radius: 999px; margin-left: 8px;
+    }
+    .account-status-badge.free { background: var(--border); color: var(--text-2); }
+    .account-status-badge.active { background: var(--accent-soft); color: var(--accent-dark); }
+    .account-status-badge.past_due, .account-status-badge.canceled { background: #fde3e0; color: #b3261e; }
+
+    .account-field { margin-bottom: 12px; }
+    .account-field label { display: block; font-size: 0.78rem; font-weight: 700; color: var(--text-2); margin-bottom: 5px; }
+    .account-field input, .account-field select {
+      width: 100%; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+      font-size: 0.9rem; font-family: inherit; color: var(--text); background: #fff;
+    }
+    .account-field input:focus, .account-field select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+    .btn-primary, .btn-secondary {
+      padding: 10px 18px; border-radius: var(--radius-sm); border: none; font-weight: 700;
+      font-size: 0.85rem; cursor: pointer; font-family: inherit; transition: background 0.13s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-dark); }
+    .btn-primary:disabled { background: var(--border); color: var(--text-3); cursor: not-allowed; }
+    .btn-secondary { background: var(--accent-soft); color: var(--accent-dark); }
+    .btn-secondary:hover { background: #d3f0e2; }
+
+    .location-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 10px 0; border-top: 1px solid var(--border);
+    }
+    .location-row:first-child { border-top: none; }
+    .location-row-label { font-weight: 700; font-size: 0.88rem; }
+    .location-row-postcode { font-size: 0.76rem; color: var(--text-2); }
+    .location-row-remove {
+      background: none; border: none; color: var(--text-3); font-size: 0.85rem; cursor: pointer;
+      font-family: inherit; padding: 4px 8px;
+    }
+    .location-row-remove:hover { color: #b3261e; }
+
+    .account-note { font-size: 0.8rem; color: var(--text-2); line-height: 1.5; }
+    .account-error { color: #b3261e; font-size: 0.85rem; margin: 6px 0; }
+    .account-success { color: var(--accent-dark); font-size: 0.85rem; margin: 6px 0; }
+
     footer { text-align: center; padding: 24px 16px; color: var(--text-3); font-size: 0.78rem; }
 
     /* ── Wider screens: the whole layout was tuned mobile-first at 640px,
@@ -389,8 +447,13 @@
 </head>
 <body>
   <header>
-    <h1>🌤️ Cornwall Radar</h1>
-    <p>The place to check before heading out</p>
+    <div class="header-top">
+      <div class="header-top-text">
+        <h1>🌤️ Cornwall Radar</h1>
+        <p>The place to check before heading out</p>
+      </div>
+      <button class="account-btn" id="accountBtn" title="Account">👤</button>
+    </div>
   </header>
   <div class="location-wrap">
     <div class="location-bar" id="locationBar">
@@ -406,6 +469,7 @@
     <div id="hubGrid" class="hub-grid"></div>
     <div id="detailPanel" hidden></div>
   </main>
+  <main id="accountPanel" hidden></main>
   <footer>Weather: Open-Meteo · Wildlife: GBIF · Buses: BODS · Traffic: TomTom &amp; National Highways · Tides: tidetimes.org.uk</footer>
 
   <script>
@@ -1507,6 +1571,253 @@
       });
     }
 
+    // ── Account panel (Phase 1.5: sign-in, saved locations, morning
+    // digest, billing) — a separate top-level panel from #app/#detailPanel
+    // above, since its data (who's signed in, their own locations) has
+    // nothing to do with dashboardData. Talks to Supabase directly for
+    // auth (magic link) and to this project's own /api/account + /api/billing
+    // routes — using the signed-in user's Supabase access token — for
+    // everything else. ─────────────────────────────────────────────────────
+    let sb = null;               // Supabase client, null until configured
+    let publicConfig = null;     // { supabaseUrl, supabaseAnonKey } from /api/public-config
+    let accountData = null;      // last-fetched /api/account/me payload
+
+    async function initAccount() {
+      try {
+        const res = await fetch('/api/public-config');
+        publicConfig = await res.json();
+      } catch (e) {
+        publicConfig = { supabaseUrl: null, supabaseAnonKey: null };
+      }
+
+      if (publicConfig.supabaseUrl && publicConfig.supabaseAnonKey && window.supabase) {
+        sb = window.supabase.createClient(publicConfig.supabaseUrl, publicConfig.supabaseAnonKey);
+        // Fires after a magic-link redirect completes and after sign-out —
+        // simplest correct behaviour is just re-rendering whatever's open.
+        sb.auth.onAuthStateChange(() => {
+          if (!document.getElementById('accountPanel').hidden) renderAccountPanel();
+        });
+      }
+
+      document.getElementById('accountBtn').addEventListener('click', () => {
+        const panel = document.getElementById('accountPanel');
+        if (panel.hidden) openAccountPanel(); else closeAccountPanel();
+      });
+
+      // Land back on the account panel (not the dashboard) after a Stripe
+      // Checkout redirect, so the new "Paid" status is the first thing seen.
+      const billingParam = new URLSearchParams(window.location.search).get('billing');
+      if (billingParam) openAccountPanel();
+    }
+
+    function openAccountPanel() {
+      document.getElementById('app').hidden = true;
+      document.getElementById('accountPanel').hidden = false;
+      renderAccountPanel();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function closeAccountPanel() {
+      document.getElementById('accountPanel').hidden = true;
+      document.getElementById('app').hidden = false;
+    }
+
+    // Attaches the signed-in user's Supabase access token to a request
+    // against this project's own backend — every /api/account/* and
+    // /api/billing/* route (other than the Stripe webhook itself) requires
+    // this rather than trusting anything the client claims about who it is.
+    async function authedFetch(path, options = {}) {
+      if (!sb) throw new Error('Accounts are not set up on this server yet');
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) throw new Error('Not signed in');
+      const headers = Object.assign({}, options.headers, {
+        Authorization: 'Bearer ' + session.access_token,
+        'Content-Type': 'application/json',
+      });
+      const res = await fetch(path, Object.assign({}, options, { headers }));
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || ('Request failed (' + res.status + ')'));
+      return body;
+    }
+
+    async function renderAccountPanel() {
+      const panel = document.getElementById('accountPanel');
+      const backBtn = '<button class="back-btn" onclick="closeAccountPanel()">← Back</button>';
+      const msgSlot = '<div id="accountGlobalMsg"></div>';
+
+      if (!sb) {
+        panel.innerHTML = backBtn + '<div class="card"><h2>👤 Account</h2>'
+          + '<p class="account-note">Accounts aren’t set up on this server yet.</p></div>';
+        return;
+      }
+
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) {
+        panel.innerHTML = backBtn + msgSlot + renderLoginCard();
+        return;
+      }
+
+      panel.innerHTML = backBtn + msgSlot + '<div class="card"><p class="account-note">Loading your account…</p></div>';
+      try {
+        accountData = await authedFetch('/api/account/me');
+        panel.innerHTML = backBtn + msgSlot + renderAccountCards(accountData);
+      } catch (err) {
+        panel.innerHTML = backBtn + msgSlot + '<div class="card"><p class="account-error">' + err.message + '</p></div>';
+      }
+    }
+
+    function showAccountError(message) {
+      const slot = document.getElementById('accountGlobalMsg');
+      if (slot) slot.innerHTML = '<div class="card"><p class="account-error">' + message + '</p></div>';
+    }
+
+    function renderLoginCard() {
+      return '<div class="card"><h2>👤 Sign in</h2>'
+        + '<p class="account-note">Sign in to save locations and set up your morning digest.</p>'
+        + '<div class="account-field"><label>Email address</label>'
+        + '<input type="email" id="loginEmail" placeholder="you@example.com" /></div>'
+        + '<button class="btn-primary" onclick="sendMagicLink()">Send me a sign-in link</button>'
+        + '<div id="loginStatus"></div>'
+        + '</div>';
+    }
+
+    async function sendMagicLink() {
+      const email = document.getElementById('loginEmail').value.trim();
+      const status = document.getElementById('loginStatus');
+      if (!email) { status.innerHTML = '<p class="account-error">Enter your email first</p>'; return; }
+      status.innerHTML = '<p class="account-note">Sending…</p>';
+      const { error } = await sb.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: window.location.origin },
+      });
+      status.innerHTML = error
+        ? '<p class="account-error">' + error.message + '</p>'
+        : '<p class="account-success">Check your email for a sign-in link.</p>';
+    }
+
+    async function signOut() {
+      await sb.auth.signOut();
+      renderAccountPanel();
+    }
+
+    function renderAccountCards(a) {
+      const badgeClass = a.subscriptionStatus || 'free';
+      const badgeLabel = a.isPaid ? 'Paid'
+        : a.subscriptionStatus === 'past_due' ? 'Past due'
+        : a.subscriptionStatus === 'canceled' ? 'Cancelled'
+        : 'Free';
+
+      const profileCard = '<div class="card"><h2>👤 ' + a.email
+        + '<span class="account-status-badge ' + badgeClass + '">' + badgeLabel + '</span></h2>'
+        + (a.isPaid
+          ? '<button class="btn-secondary" onclick="openBillingPortal()">Manage billing</button>'
+          : '<button class="btn-primary" onclick="startCheckout()">Subscribe — ~£9.99/year</button>')
+        + ' <button class="btn-secondary" onclick="signOut()" style="margin-left:8px;">Sign out</button>'
+        + '</div>';
+
+      const locationRows = a.locations.length
+        ? a.locations.map((loc) => '<div class="location-row">'
+            + '<div><div class="location-row-label">' + loc.label + '</div>'
+            + '<div class="location-row-postcode">' + loc.postcode + '</div></div>'
+            + '<button class="location-row-remove" onclick="removeLocation(\'' + loc.id + '\')">Remove</button>'
+            + '</div>').join('')
+        : '<p class="account-note">No saved locations yet.</p>';
+
+      const locationsCard = '<div class="card"><h2>📍 Saved locations</h2>'
+        + locationRows
+        + '<div class="account-field" style="margin-top:14px;"><label>Label</label><input type="text" id="newLocationLabel" placeholder="Home, Mum’s, dog walk…" /></div>'
+        + '<div class="account-field"><label>Postcode or town</label><input type="text" id="newLocationPostcode" placeholder="TR1 2AB" /></div>'
+        + '<button class="btn-primary" onclick="addLocation()">Add location</button>'
+        + '<div id="locationStatusMsg"></div>'
+        + '</div>';
+
+      const digest = a.morningDigest;
+      const locationOptions = a.locations.map((loc) =>
+        '<option value="' + loc.id + '"' + (digest && digest.location_id === loc.id ? ' selected' : '') + '>' + loc.label + '</option>'
+      ).join('');
+      const hourOptions = Array.from({ length: 24 }, (_, h) => {
+        const label = (h % 12 === 0 ? 12 : h % 12) + ':00 ' + (h < 12 ? 'am' : 'pm');
+        const selected = digest && digest.config && digest.config.sendHour === h ? ' selected' : '';
+        return '<option value="' + h + '"' + selected + '>' + label + '</option>';
+      }).join('');
+
+      let digestCard;
+      if (!a.isPaid) {
+        digestCard = '<div class="card"><h2>☀️ Morning digest</h2>'
+          + '<p class="account-note">A daily email with weather, tides and traffic for one saved spot, sent at a time you choose. Available on the paid plan.</p>'
+          + '</div>';
+      } else if (!a.locations.length) {
+        digestCard = '<div class="card"><h2>☀️ Morning digest</h2>'
+          + '<p class="account-note">Add a saved location above first, then set up your digest here.</p></div>';
+      } else {
+        digestCard = '<div class="card"><h2>☀️ Morning digest</h2>'
+          + '<div class="account-field"><label>Send for</label><select id="digestLocation">' + locationOptions + '</select></div>'
+          + '<div class="account-field"><label>Send at</label><select id="digestHour">' + hourOptions + '</select></div>'
+          + '<button class="btn-primary" onclick="saveDigest(true)">' + (digest && digest.active ? 'Update digest' : 'Turn on digest') + '</button>'
+          + (digest && digest.active ? ' <button class="btn-secondary" onclick="saveDigest(false)" style="margin-left:8px;">Turn off</button>' : '')
+          + '<div id="digestStatusMsg"></div>'
+          + '</div>';
+      }
+
+      return profileCard + locationsCard + digestCard;
+    }
+
+    async function addLocation() {
+      const label = document.getElementById('newLocationLabel').value.trim();
+      const postcode = document.getElementById('newLocationPostcode').value.trim();
+      const status = document.getElementById('locationStatusMsg');
+      if (!label || !postcode) { status.innerHTML = '<p class="account-error">Enter both a label and a postcode/town</p>'; return; }
+      status.innerHTML = '<p class="account-note">Saving…</p>';
+      try {
+        await authedFetch('/api/account/locations', { method: 'POST', body: JSON.stringify({ label, postcode }) });
+        renderAccountPanel();
+      } catch (err) {
+        status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
+    }
+
+    async function removeLocation(id) {
+      try {
+        await authedFetch('/api/account/locations/' + encodeURIComponent(id), { method: 'DELETE' });
+        renderAccountPanel();
+      } catch (err) {
+        showAccountError(err.message);
+      }
+    }
+
+    async function saveDigest(active) {
+      const locationId = document.getElementById('digestLocation').value;
+      const sendHour = parseInt(document.getElementById('digestHour').value, 10);
+      const status = document.getElementById('digestStatusMsg');
+      status.innerHTML = '<p class="account-note">Saving…</p>';
+      try {
+        await authedFetch('/api/account/morning-digest', {
+          method: 'PUT',
+          body: JSON.stringify({ locationId, sendHour, active }),
+        });
+        renderAccountPanel();
+      } catch (err) {
+        status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
+    }
+
+    async function startCheckout() {
+      try {
+        const { url } = await authedFetch('/api/billing/create-checkout-session', { method: 'POST' });
+        window.location.href = url;
+      } catch (err) {
+        showAccountError(err.message);
+      }
+    }
+
+    async function openBillingPortal() {
+      try {
+        const { url } = await authedFetch('/api/billing/create-portal-session', { method: 'POST' });
+        window.location.href = url;
+      } catch (err) {
+        showAccountError(err.message);
+      }
+    }
+
     document.getElementById('scanBtn').addEventListener('click', scanLocation);
     document.getElementById('myLocationBtn').addEventListener('click', useMyLocation);
     document.getElementById('locationInput').addEventListener('keydown', (e) => {
@@ -1515,6 +1826,7 @@
     if (currentLocation) document.getElementById('locationInput').value = currentLocation.label;
     updateLocationStatus();
     loadDashboard();
+    initAccount();
   </script>
 </body>
 </html>
