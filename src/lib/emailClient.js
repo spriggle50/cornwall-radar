@@ -17,15 +17,17 @@ const { fetchWithTimeout } = require('./fetchWithTimeout');
 const SMTP2GO_API_KEY = process.env.SMTP2GO_API_KEY;
 const SMTP2GO_SENDER = process.env.SMTP2GO_SENDER || 'Cornwall Radar <digest@cornwallradar.co.uk>';
 
-// TEMPORARY debug line — proves at boot time whether Railway actually handed
-// this process a value for SMTP2GO_API_KEY, since the dashboard *showing*
-// the variable and the running process *having* it are two different things
-// (a stale deployment from before the variable was added would still show
-// "email not configured" even though Railway's UI looks correct). Remove
-// once the digest is confirmed sending.
-console.log('[emailClient] SMTP2GO_API_KEY present at boot:', !!SMTP2GO_API_KEY, '| length:', SMTP2GO_API_KEY ? SMTP2GO_API_KEY.length : 0);
-
 const isConfigured = () => !!SMTP2GO_API_KEY;
+
+// 20s rather than fetchWithTimeout's normal 8s default: the dashboard's
+// fetchers deliberately fail fast so one slow source never holds up a page
+// load, but sending the digest is a one-shot, once-a-day action for a paid
+// feature — if SMTP2GO is just a bit slow to respond, it's worth waiting
+// longer rather than dropping that subscriber's email for the whole day (the
+// morning-digest job only retries a given consumer once their chosen hour
+// comes round again tomorrow, so an 8s timeout here was a real risk of
+// silently missed sends, not just a slow page).
+const SEND_TIMEOUT_MS = 20000;
 
 async function sendEmail({ to, subject, html }) {
   if (!SMTP2GO_API_KEY) {
@@ -45,7 +47,7 @@ async function sendEmail({ to, subject, html }) {
       subject,
       html_body: html,
     }),
-  });
+  }, SEND_TIMEOUT_MS);
 
   const body = await res.json().catch(() => null);
 
