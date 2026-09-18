@@ -30,7 +30,7 @@ router.get('/', async (req, res) => {
 
     let query = supabaseAdmin
       .from('businesses')
-      .select('id, name, category, description, phone, website, postcode, lat, lng, subscription_status');
+      .select('id, name, category, description, phone, website, postcode, lat, lng, logo_url, subscription_status');
 
     if (category && category.trim()) {
       query = query.ilike('category', category.trim());

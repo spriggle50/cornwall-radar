@@ -19,10 +19,23 @@
 // person's auth id could exist in both tables).
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { stripe } = require('../lib/stripeClient');
 const { supabaseAdmin } = require('../lib/supabaseClient');
 const { requireAuth } = require('../middleware/requireAuth');
 const { geocodeLocation } = require('../fetchers/geocode');
+
+// Logos are small and few (one per business), so memory storage + a
+// straight-through upload to Supabase Storage is simpler than juggling temp
+// files on disk — the file never needs to touch this server's own
+// filesystem. 2MB is generous for a logo while still keeping the free
+// SMTP2GO-style "don't need to think about disk space" simplicity the rest
+// of this project favours.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+});
+const ALLOWED_LOGO_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 
 const STRIPE_BUSINESS_PRICE_ID = process.env.STRIPE_BUSINESS_PRICE_ID;
 const APP_BASE_URL = process.env.APP_BASE_URL || 'http://localhost:3000';
@@ -38,7 +51,7 @@ router.get('/me', async (req, res) => {
   try {
     const { data: business, error } = await supabaseAdmin
       .from('businesses')
-      .select('id, name, category, description, phone, website, postcode, lat, lng, subscription_status')
+      .select('id, name, category, description, phone, website, postcode, lat, lng, logo_url, subscription_status')
       .eq('id', req.user.id)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -65,7 +78,7 @@ router.put('/listing', async (req, res) => {
 
     const { data: existing } = await supabaseAdmin
       .from('businesses')
-      .select('stripe_customer_id, subscription_status')
+      .select('stripe_customer_id, subscription_status, logo_url')
       .eq('id', req.user.id)
       .maybeSingle();
 
@@ -82,10 +95,11 @@ router.put('/listing', async (req, res) => {
         postcode: postcode.trim(),
         lat: geo.lat,
         lng: geo.lon,
+        logo_url: existing ? existing.logo_url : null,
         stripe_customer_id: existing ? existing.stripe_customer_id : null,
         subscription_status: existing ? existing.subscription_status : 'free',
       })
-      .select('id, name, category, description, phone, website, postcode, lat, lng, subscription_status')
+      .select('id, name, category, description, phone, website, postcode, lat, lng, logo_url, subscription_status')
       .single();
     if (error) throw new Error(error.message);
 
@@ -110,6 +124,64 @@ router.delete('/listing', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message || 'Could not remove your listing' });
+  }
+});
+
+// POST /api/business/logo — upload/replace the caller's logo. Requires a
+// listing to already exist (PUT /listing first), since the logo just
+// updates that row's logo_url — same "create the listing, then enhance it"
+// order as upgrading to Featured. Uploaded to a "business-logos" Storage
+// bucket (create this once in the Supabase dashboard, set to Public so the
+// directory can display images via their public URL) using the
+// service-role client, so no Storage RLS policies are needed — only this
+// server ever writes to it, and only after requireAuth has already
+// confirmed who's asking.
+router.post('/logo', upload.single('logo'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded (field name must be "logo")' });
+  }
+  const ext = ALLOWED_LOGO_TYPES[req.file.mimetype];
+  if (!ext) {
+    return res.status(400).json({ error: 'Logo must be a PNG, JPEG or WebP image' });
+  }
+
+  try {
+    const { data: business } = await supabaseAdmin
+      .from('businesses')
+      .select('id')
+      .eq('id', req.user.id)
+      .maybeSingle();
+    if (!business) {
+      return res.status(400).json({ error: 'Create your listing first, then upload a logo' });
+    }
+
+    // upsert: true + a fixed filename (not the original filename) means a
+    // second upload cleanly replaces the first rather than accumulating old
+    // logos in storage every time someone changes their image.
+    const path = `${req.user.id}/logo.${ext}`;
+    const { error: uploadErr } = await supabaseAdmin.storage
+      .from('business-logos')
+      .upload(path, req.file.buffer, { contentType: req.file.mimetype, upsert: true });
+    if (uploadErr) throw new Error(uploadErr.message);
+
+    const { data: publicUrlData } = supabaseAdmin.storage.from('business-logos').getPublicUrl(path);
+    // Cache-bust the URL with a timestamp — the path itself never changes
+    // (upsert reuses it), so without this a browser that already cached the
+    // old logo image would keep showing it after a replace.
+    const logoUrl = publicUrlData.publicUrl + '?v=' + Date.now();
+
+    const { data, error } = await supabaseAdmin
+      .from('businesses')
+      .update({ logo_url: logoUrl })
+      .eq('id', req.user.id)
+      .select('id, logo_url')
+      .single();
+    if (error) throw new Error(error.message);
+
+    res.json(data);
+  } catch (err) {
+    console.error('[business] logo upload failed:', err.message);
+    res.status(500).json({ error: err.message || 'Could not upload logo' });
   }
 });
 

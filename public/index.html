@@ -427,6 +427,29 @@
     .account-error { color: #b3261e; font-size: 0.85rem; margin: 6px 0; }
     .account-success { color: var(--accent-dark); font-size: 0.85rem; margin: 6px 0; }
 
+    /* ── Business directory (Phase 3) ─────────────────────────────────── */
+    .directory-search-bar { display: flex; gap: 8px; margin-bottom: 14px; }
+    .directory-search-bar input, .directory-search-bar select {
+      flex: 1; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+      font-size: 0.9rem; font-family: inherit; color: var(--text); background: #fff; min-width: 0;
+    }
+    .directory-row {
+      padding: 12px 0; border-top: 1px solid var(--border);
+    }
+    .directory-row:first-child { border-top: none; }
+    .directory-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .directory-row-logo { width: 36px; height: 36px; object-fit: cover; border-radius: var(--radius-sm); flex-shrink: 0; }
+    .directory-row-name { font-weight: 700; font-size: 0.95rem; }
+    .directory-row-category { font-size: 0.76rem; color: var(--text-2); margin-top: 1px; }
+    .directory-row-desc { font-size: 0.85rem; color: var(--text-2); margin: 6px 0 0; line-height: 1.45; }
+    .directory-row-meta { font-size: 0.78rem; color: var(--text-3); margin-top: 6px; }
+    .directory-row-meta a { color: var(--accent-dark); }
+    .featured-badge {
+      display: inline-block; font-size: 0.65rem; font-weight: 800; text-transform: uppercase;
+      letter-spacing: 0.04em; padding: 3px 9px; border-radius: 999px; background: #fff2cc; color: #9a6b00;
+      white-space: nowrap; flex-shrink: 0;
+    }
+
     footer { text-align: center; padding: 24px 16px; color: var(--text-3); font-size: 0.78rem; }
 
     /* ── Wider screens: the whole layout was tuned mobile-first at 640px,
@@ -730,10 +753,16 @@
         if (!bw || bw.unavailable || !bw.sites || !bw.sites.length) return 'Unavailable right now';
         return bw.sites.length + ' Cornwall beaches — live EA ratings';
       }
+      // Directory isn't part of dashboardData (it's its own public endpoint,
+      // fetched fresh with search/filter params whenever the page opens —
+      // see renderDirectoryDetail), so this preview is just static copy
+      // rather than a live count.
+      if (key === 'directory') return 'Find local businesses, or list your own';
       return '';
     }
 
     const HUB_SECTIONS = [
+      { key: 'directory', icon: '🏪', title: 'Business Directory' },
       { key: 'weatherDetails', icon: '🌤️', title: 'Weather Details', photo: '/images/weather-hero.jpg' },
       { key: 'traffic', icon: '🚗', title: 'Traffic', photo: '/images/traffic-hero.jpg' },
       { key: 'buses', icon: '🚌', title: 'Live Buses', photo: '/images/buses-hero.jpg' },
@@ -778,6 +807,12 @@
       document.getElementById('hubGrid').hidden = true;
       const panel = document.getElementById('detailPanel');
       panel.hidden = false;
+
+      // The directory isn't part of the once-per-load dashboardData payload
+      // (it's public data with its own search/filter params, refetched on
+      // demand), so it gets its own async render path instead of the
+      // synchronous renderers map below.
+      if (key === 'directory') { renderDirectoryDetail(); return; }
 
       const renderers = {
         traffic: renderTrafficDetail,
@@ -1587,6 +1622,106 @@
       });
     }
 
+    // ── Business Directory (Phase 3) — public, no sign-in required. A
+    // fresh GET /api/directory on every open/search/filter rather than
+    // dashboardData, since this is independent of the weather/traffic/etc.
+    // aggregation and needs its own query params. Managing your OWN listing
+    // (create/edit/Feature) lives in the account panel further down, since
+    // that needs the signed-in user's session the same way saved locations
+    // and the digest do. ─────────────────────────────────────────────────
+    let directoryFilters = { q: '', category: '' };
+
+    async function renderDirectoryDetail() {
+      const panel = document.getElementById('detailPanel');
+      const backBtn = '<button class="back-btn" onclick="closeDetail()">← Back</button>';
+      panel.innerHTML = backBtn + '<div class="card"><h2>🏪 Business Directory</h2><p class="unavailable">Loading…</p></div>';
+
+      let data;
+      try {
+        const params = new URLSearchParams();
+        if (directoryFilters.q) params.set('q', directoryFilters.q);
+        if (directoryFilters.category) params.set('category', directoryFilters.category);
+        if (currentLocation) { params.set('lat', currentLocation.lat); params.set('lon', currentLocation.lon); }
+        const res = await fetch('/api/directory' + (params.toString() ? '?' + params.toString() : ''));
+        data = await res.json();
+      } catch (err) {
+        data = { configured: true, businesses: [], error: err.message };
+      }
+
+      panel.innerHTML = backBtn + renderDirectoryCard(data);
+      // Re-focus the search box and put the cursor back at the end after a
+      // re-render, so typing a search term doesn't feel like it keeps
+      // losing focus after every keystroke-triggered refresh.
+      const input = document.getElementById('directorySearchInput');
+      if (input && document.activeElement !== input) {
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+    }
+
+    let directorySearchTimer = null;
+    function onDirectorySearchInput(value) {
+      directoryFilters.q = value;
+      clearTimeout(directorySearchTimer);
+      // Debounced rather than firing a request on every keystroke — same
+      // "don't hammer the API while someone's still typing" idea as any
+      // live-search box.
+      directorySearchTimer = setTimeout(renderDirectoryDetail, 350);
+    }
+    function onDirectoryCategoryChange(value) {
+      directoryFilters.category = value;
+      renderDirectoryDetail();
+    }
+
+    function renderDirectoryCard(data) {
+      const searchBar = '<div class="directory-search-bar">'
+        + '<input type="text" id="directorySearchInput" placeholder="Search businesses…" value="'
+        + (directoryFilters.q || '').replace(/"/g, '&quot;') + '" oninput="onDirectorySearchInput(this.value)" />'
+        + '<input type="text" id="directoryCategoryInput" placeholder="Category (e.g. cafe)" value="'
+        + (directoryFilters.category || '').replace(/"/g, '&quot;') + '" onchange="onDirectoryCategoryChange(this.value)" />'
+        + '</div>';
+
+      const businesses = (data && data.businesses) || [];
+
+      let body;
+      if (data && data.configured === false) {
+        body = '<p class="unavailable">' + (data.message || 'Directory not set up yet') + '</p>';
+      } else if (data && data.error) {
+        body = '<p class="unavailable">Could not load the directory right now.</p>';
+      } else if (!businesses.length) {
+        body = '<p class="account-note">No businesses listed yet' + (directoryFilters.q || directoryFilters.category ? ' matching that search.' : ' — be the first!') + '</p>';
+      } else {
+        body = businesses.map((b) => {
+          const phoneLine = b.phone ? '<a href="tel:' + b.phone.replace(/\s+/g, '') + '">' + b.phone + '</a>' : '';
+          const siteLine = b.website ? '<a href="' + b.website + '" target="_blank" rel="noopener">Website</a>' : '';
+          const distLine = b.distanceKm != null ? b.distanceKm + 'km away' : null;
+          const meta = [distLine, phoneLine, siteLine].filter(Boolean).join(' · ');
+          const logo = b.logo_url ? '<img src="' + b.logo_url + '" alt="" class="directory-row-logo" />' : '';
+          return '<div class="directory-row">'
+            + '<div class="directory-row-top">'
+            + '<div style="display:flex; align-items:center; gap:10px;">' + logo
+            + '<div><div class="directory-row-name">' + b.name + '</div>'
+            + '<div class="directory-row-category">' + b.category + (b.postcode ? ' · ' + b.postcode : '') + '</div></div></div>'
+            + (b.featured ? '<span class="featured-badge">★ Featured</span>' : '')
+            + '</div>'
+            + (b.description ? '<p class="directory-row-desc">' + b.description + '</p>' : '')
+            + (meta ? '<p class="directory-row-meta">' + meta + '</p>' : '')
+            + '</div>';
+        }).join('');
+      }
+
+      return '<div class="card"><h2>🏪 Business Directory</h2>'
+        + '<p class="section-subtitle">Local businesses across Cornwall — Featured listings appear first.</p>'
+        + searchBar
+        + body
+        + '</div>'
+        + '<div class="card">'
+        + '<h2>📋 Own a local business?</h2>'
+        + '<p class="account-note">Add your business for free, or upgrade to Featured so you show up first.</p>'
+        + '<button class="btn-primary" onclick="closeDetail(); openAccountPanel();">List your business</button>'
+        + '</div>';
+    }
+
     // ── Account panel (Phase 1.5: sign-in, saved locations, morning
     // digest, billing) — a separate top-level panel from #app/#detailPanel
     // above, since its data (who's signed in, their own locations) has
@@ -1597,6 +1732,7 @@
     let sb = null;               // Supabase client, null until configured
     let publicConfig = null;     // { supabaseUrl, supabaseAnonKey } from /api/public-config
     let accountData = null;      // last-fetched /api/account/me payload
+    let businessData = null;     // last-fetched /api/business/me payload's `business` (or null)
 
     async function initAccount() {
       try {
@@ -1621,9 +1757,13 @@
       });
 
       // Land back on the account panel (not the dashboard) after a Stripe
-      // Checkout redirect, so the new "Paid" status is the first thing seen.
-      const billingParam = new URLSearchParams(window.location.search).get('billing');
-      if (billingParam) openAccountPanel();
+      // Checkout redirect, so the new "Paid"/"Featured" status is the first
+      // thing seen — covers both the consumer (?billing=) and business
+      // (?businessBilling=) checkout flows, which use separate query params
+      // since they're separate Stripe Prices/subscriptions (see billing.js
+      // and business.js's success_url/cancel_url).
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('billing') || params.get('businessBilling')) openAccountPanel();
     }
 
     function openAccountPanel() {
@@ -1655,6 +1795,24 @@
       return body;
     }
 
+    // Same as authedFetch but for a multipart file upload (the business
+    // logo) — deliberately does NOT set Content-Type itself, since the
+    // browser needs to set that header with its own multipart boundary
+    // string; setting it manually here would produce a malformed request.
+    async function authedUpload(path, formData) {
+      if (!sb) throw new Error('Accounts are not set up on this server yet');
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) throw new Error('Not signed in');
+      const res = await fetch(path, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + session.access_token },
+        body: formData,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || ('Request failed (' + res.status + ')'));
+      return body;
+    }
+
     async function renderAccountPanel() {
       const panel = document.getElementById('accountPanel');
       const backBtn = '<button class="back-btn" onclick="closeAccountPanel()">← Back</button>';
@@ -1674,8 +1832,18 @@
 
       panel.innerHTML = backBtn + msgSlot + '<div class="card"><p class="account-note">Loading your account…</p></div>';
       try {
-        accountData = await authedFetch('/api/account/me');
-        panel.innerHTML = backBtn + msgSlot + renderAccountCards(accountData);
+        // Consumer account and business listing are independent of each
+        // other (see routes/business.js) — fetched together so one slow or
+        // failing call doesn't hold up the other. Business is genuinely
+        // optional (most consumers never create one), so its own failure
+        // degrades to "no listing" rather than blocking the whole panel.
+        const [account, businessResp] = await Promise.all([
+          authedFetch('/api/account/me'),
+          authedFetch('/api/business/me').catch(() => ({ business: null })),
+        ]);
+        accountData = account;
+        businessData = businessResp.business;
+        panel.innerHTML = backBtn + msgSlot + renderAccountCards(accountData) + renderBusinessCards(businessData);
       } catch (err) {
         panel.innerHTML = backBtn + msgSlot + '<div class="card"><p class="account-error">' + err.message + '</p></div>';
       }
@@ -1776,6 +1944,126 @@
       }
 
       return profileCard + locationsCard + digestCard;
+    }
+
+    // ── Business directory: manage YOUR OWN listing (see routes/business.js).
+    // Same signed-in session as the rest of this panel — a person can be a
+    // consumer, a business, or both, with one login.
+    function renderBusinessCards(business) {
+      const badgeClass = business ? (business.subscription_status || 'free') : 'free';
+      const badgeLabel = business && business.subscription_status === 'active' ? 'Featured'
+        : business && business.subscription_status === 'past_due' ? 'Past due'
+        : business && business.subscription_status === 'canceled' ? 'Cancelled'
+        : business ? 'Free listing' : '';
+      const headerBadge = business ? '<span class="account-status-badge ' + badgeClass + '">' + badgeLabel + '</span>' : '';
+
+      const billingBtn = !business ? ''
+        : business.subscription_status === 'active'
+          ? '<button class="btn-secondary" onclick="openBusinessBillingPortal()">Manage billing</button>'
+          : '<button class="btn-primary" onclick="startBusinessCheckout()">Upgrade to Featured — £4.99/month</button>';
+      const removeBtn = business
+        ? ' <button class="btn-secondary" style="margin-left:8px;" onclick="removeBusinessListing()">Remove listing</button>'
+        : '';
+
+      const esc = (v) => (v || '').replace(/"/g, '&quot;');
+
+      // Logo upload only makes sense once a listing row exists (it just
+      // updates that row's logo_url) — same "create it, then enhance it"
+      // order as upgrading to Featured, so this block only renders when
+      // `business` is already set.
+      const logoBlock = !business ? '' : (
+        '<div class="account-field"><label>Logo (optional)</label>'
+        + (business.logo_url ? '<img src="' + business.logo_url + '" alt="" style="display:block; width:64px; height:64px; object-fit:cover; border-radius:var(--radius-sm); margin-bottom:8px;" />' : '')
+        + '<input type="file" id="bizLogoFile" accept="image/png,image/jpeg,image/webp" />'
+        + '<button class="btn-secondary" style="margin-top:8px;" onclick="uploadBusinessLogo()">' + (business.logo_url ? 'Replace logo' : 'Upload logo') + '</button>'
+        + '<div id="bizLogoStatusMsg"></div>'
+        + '</div>'
+      );
+
+      return '<div class="card"><h2>🏪 Your business listing' + headerBadge + '</h2>'
+        + (business
+          ? '<p class="account-note">Visible in the public Business Directory right now. Editing below updates it instantly.</p>'
+          : '<p class="account-note">Free to list — fill this in to appear in the Business Directory.</p>')
+        + '<div class="account-field"><label>Business name</label><input type="text" id="bizName" value="' + esc(business && business.name) + '" placeholder="The Cornish Bakery" /></div>'
+        + '<div class="account-field"><label>Category</label><input type="text" id="bizCategory" value="' + esc(business && business.category) + '" placeholder="Cafe, plumber, hair salon…" /></div>'
+        + '<div class="account-field"><label>Postcode or town</label><input type="text" id="bizPostcode" value="' + esc(business && business.postcode) + '" placeholder="TR1 2AB" /></div>'
+        + '<div class="account-field"><label>Description (optional)</label><input type="text" id="bizDescription" value="' + esc(business && business.description) + '" placeholder="What you do, in a sentence" /></div>'
+        + '<div class="account-field"><label>Phone (optional)</label><input type="text" id="bizPhone" value="' + esc(business && business.phone) + '" placeholder="01872 000000" /></div>'
+        + '<div class="account-field"><label>Website (optional)</label><input type="text" id="bizWebsite" value="' + esc(business && business.website) + '" placeholder="https://…" /></div>'
+        + logoBlock
+        + '<button class="' + (business ? 'btn-secondary' : 'btn-primary') + '" onclick="saveBusinessListing()">' + (business ? 'Save changes' : 'Create listing') + '</button>'
+        + (business ? ' ' + billingBtn + removeBtn : '')
+        + '<div id="businessStatusMsg"></div>'
+        + '</div>';
+    }
+
+    async function saveBusinessListing() {
+      const name = document.getElementById('bizName').value.trim();
+      const category = document.getElementById('bizCategory').value.trim();
+      const postcode = document.getElementById('bizPostcode').value.trim();
+      const description = document.getElementById('bizDescription').value.trim();
+      const phone = document.getElementById('bizPhone').value.trim();
+      const website = document.getElementById('bizWebsite').value.trim();
+      const status = document.getElementById('businessStatusMsg');
+      if (!name || !category || !postcode) {
+        status.innerHTML = '<p class="account-error">Business name, category and postcode/town are required</p>';
+        return;
+      }
+      status.innerHTML = '<p class="account-note">Saving…</p>';
+      try {
+        await authedFetch('/api/business/listing', {
+          method: 'PUT',
+          body: JSON.stringify({ name, category, postcode, description, phone, website }),
+        });
+        renderAccountPanel();
+      } catch (err) {
+        status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
+    }
+
+    async function uploadBusinessLogo() {
+      const fileInput = document.getElementById('bizLogoFile');
+      const status = document.getElementById('bizLogoStatusMsg');
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) { status.innerHTML = '<p class="account-error">Choose an image file first</p>'; return; }
+      if (file.size > 2 * 1024 * 1024) { status.innerHTML = '<p class="account-error">Logo must be under 2MB</p>'; return; }
+
+      status.innerHTML = '<p class="account-note">Uploading…</p>';
+      try {
+        const formData = new FormData();
+        formData.append('logo', file);
+        await authedUpload('/api/business/logo', formData);
+        renderAccountPanel();
+      } catch (err) {
+        status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
+    }
+
+    async function removeBusinessListing() {
+      try {
+        await authedFetch('/api/business/listing', { method: 'DELETE' });
+        renderAccountPanel();
+      } catch (err) {
+        showAccountError(err.message);
+      }
+    }
+
+    async function startBusinessCheckout() {
+      try {
+        const { url } = await authedFetch('/api/business/create-checkout-session', { method: 'POST' });
+        window.location.href = url;
+      } catch (err) {
+        showAccountError(err.message);
+      }
+    }
+
+    async function openBusinessBillingPortal() {
+      try {
+        const { url } = await authedFetch('/api/business/create-portal-session', { method: 'POST' });
+        window.location.href = url;
+      } catch (err) {
+        showAccountError(err.message);
+      }
     }
 
     async function addLocation() {
