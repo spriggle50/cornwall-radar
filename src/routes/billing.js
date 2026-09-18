@@ -79,18 +79,29 @@ router.post('/create-portal-session', requireAuth, requireStripeConfigured, asyn
   }
 });
 
+// Applies a status update to whichever of the two account tables actually
+// has this Stripe customer — safe to run against both unconditionally
+// because each table's stripe_customer_id comes from its own dedicated
+// Stripe customer (routes/business.js never reuses a consumer's customer
+// id, or vice versa), so at most one of these two updates ever matches a
+// row; the other is a harmless no-op.
+async function updateStatusByStripeCustomer(stripeCustomerId, status) {
+  await supabaseAdmin.from('consumers').update({ subscription_status: status }).eq('stripe_customer_id', stripeCustomerId);
+  await supabaseAdmin.from('businesses').update({ subscription_status: status }).eq('stripe_customer_id', stripeCustomerId);
+}
+
 async function upsertSubscriptionStatus(sub) {
+  const status = (sub.status === 'active' || sub.status === 'trialing') ? 'active' : sub.status;
+  await updateStatusByStripeCustomer(sub.customer, status);
+
+  // The `subscriptions` history table predates the business directory and
+  // is consumer-only for now — a business's Featured status is tracked
+  // just via businesses.subscription_status, no separate history table yet.
   const { data: consumer } = await supabaseAdmin
     .from('consumers')
     .select('id')
     .eq('stripe_customer_id', sub.customer)
     .maybeSingle();
-
-  await supabaseAdmin
-    .from('consumers')
-    .update({ subscription_status: (sub.status === 'active' || sub.status === 'trialing') ? 'active' : sub.status })
-    .eq('stripe_customer_id', sub.customer);
-
   if (consumer) {
     await supabaseAdmin
       .from('subscriptions')
@@ -132,12 +143,18 @@ async function webhookHandler(req, res) {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object;
-        const consumerId = session.client_reference_id;
-        if (consumerId && session.customer) {
+        const accountId = session.client_reference_id;
+        // Only this event is keyed by OUR id (client_reference_id) rather
+        // than Stripe's customer id, so it's the one place that genuinely
+        // needs the accountType tag to know which table to attach the new
+        // Stripe customer to — see the metadata comment in
+        // routes/business.js's create-checkout-session.
+        const isBusiness = session.metadata && session.metadata.accountType === 'business';
+        if (accountId && session.customer) {
           await supabaseAdmin
-            .from('consumers')
+            .from(isBusiness ? 'businesses' : 'consumers')
             .update({ stripe_customer_id: session.customer, subscription_status: 'active' })
-            .eq('id', consumerId);
+            .eq('id', accountId);
         }
         break;
       }
@@ -148,19 +165,13 @@ async function webhookHandler(req, res) {
       }
       case 'customer.subscription.deleted': {
         const sub = event.data.object;
-        await supabaseAdmin
-          .from('consumers')
-          .update({ subscription_status: 'canceled' })
-          .eq('stripe_customer_id', sub.customer);
+        await updateStatusByStripeCustomer(sub.customer, 'canceled');
         break;
       }
       case 'invoice.payment_failed': {
         const invoice = event.data.object;
         if (invoice.customer) {
-          await supabaseAdmin
-            .from('consumers')
-            .update({ subscription_status: 'past_due' })
-            .eq('stripe_customer_id', invoice.customer);
+          await updateStatusByStripeCustomer(invoice.customer, 'past_due');
         }
         break;
       }

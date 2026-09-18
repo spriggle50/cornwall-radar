@@ -6,6 +6,8 @@ const path = require('path');
 const dashboardRoute = require('./routes/dashboard');
 const accountRoute = require('./routes/account');
 const billing = require('./routes/billing');
+const businessRoute = require('./routes/business');
+const directoryRoute = require('./routes/directory');
 const { geocodeLocation } = require('./fetchers/geocode');
 const { runMorningDigest } = require('./jobs/morningDigest');
 
@@ -36,6 +38,11 @@ app.get('/api/health', (req, res) => {
 app.use('/api/dashboard', dashboardRoute);
 app.use('/api/account', accountRoute);
 app.use('/api/billing', billing.router);
+// Phase 3 — the business directory. /business is owner-only (create/edit a
+// listing, upgrade to Featured); /directory is the public, no-auth browse
+// endpoint everyone (including logged-out visitors) hits to see listings.
+app.use('/api/business', businessRoute);
+app.use('/api/directory', directoryRoute);
 
 // GET /api/public-config — the handful of values the frontend needs to talk
 // to Supabase directly (its anon key is designed to be shared with the
