@@ -450,6 +450,27 @@
       white-space: nowrap; flex-shrink: 0;
     }
 
+    /* Main-dashboard "Sponsored" strip — a handful of rotating Featured
+       businesses, separate from (and higher-visibility than) the full
+       directory page. Horizontally scrollable so it stays compact on
+       mobile regardless of how many slots are configured server-side. */
+    .sponsored-strip { margin-bottom: 14px; }
+    .sponsored-strip-label {
+      font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-3); margin: 0 2px 6px;
+    }
+    .sponsored-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 2px; }
+    .sponsored-card {
+      flex: 0 0 auto; width: 168px; background: var(--card-bg); border-radius: var(--radius-md);
+      padding: 12px; box-shadow: var(--shadow-sm); text-align: left; text-decoration: none; color: inherit;
+      border: 1px solid var(--border);
+    }
+    .sponsored-card-logo {
+      width: 36px; height: 36px; object-fit: cover; border-radius: var(--radius-sm); margin-bottom: 8px;
+    }
+    .sponsored-card-name { font-weight: 700; font-size: 0.85rem; line-height: 1.25; }
+    .sponsored-card-category { font-size: 0.72rem; color: var(--text-2); margin-top: 2px; }
+
     footer { text-align: center; padding: 24px 16px; color: var(--text-3); font-size: 0.78rem; }
 
     /* ── Wider screens: the whole layout was tuned mobile-first at 640px,
@@ -492,6 +513,7 @@
   </div>
   <main id="app">
     <div id="weatherSummary"><div class="card"><p>Loading live Cornwall data…</p></div></div>
+    <div id="sponsoredStrip"></div>
     <div id="worldClockCard"></div>
     <div id="hubGrid" class="hub-grid"></div>
     <div id="detailPanel" hidden></div>
@@ -601,9 +623,44 @@
         document.getElementById('worldClockCard').innerHTML = renderWorldClockCard();
         startWorldClock();
         renderHubGrid();
+        loadSponsoredStrip();
       } catch (err) {
         document.getElementById('weatherSummary').innerHTML =
           '<div class="card"><p class="unavailable">Could not reach the dashboard API: ' + err.message + '</p></div>';
+      }
+    }
+
+    // Fetched separately from the main dashboard aggregation above — this
+    // is Business Directory data (see routes/directory.js's /sponsored
+    // endpoint), not one of the weather/traffic/etc. sources, and rotates
+    // server-side on its own clock regardless of when a visitor's page
+    // happens to load. Fails silently (empty strip) rather than showing an
+    // error card — an empty "no sponsors yet" state isn't something a
+    // visitor needs to be told about, unlike a real dashboard source
+    // going down.
+    async function loadSponsoredStrip() {
+      const el = document.getElementById('sponsoredStrip');
+      try {
+        const res = await fetch('/api/directory/sponsored?limit=3');
+        const data = await res.json();
+        const businesses = (data && data.businesses) || [];
+        if (!businesses.length) { el.innerHTML = ''; return; }
+
+        const cards = businesses.map((b) => {
+          const logo = b.logo_url ? '<img src="' + b.logo_url + '" alt="" class="sponsored-card-logo" />' : '';
+          const href = b.website || '#';
+          return '<a class="sponsored-card" href="' + href + '"'
+            + (b.website ? ' target="_blank" rel="noopener"' : ' onclick="openDetail(\'directory\'); return false;"')
+            + '>' + logo
+            + '<div class="sponsored-card-name">' + b.name + '</div>'
+            + '<div class="sponsored-card-category">' + b.category + '</div>'
+            + '</a>';
+        }).join('');
+
+        el.innerHTML = '<div class="sponsored-strip"><div class="sponsored-strip-label">Sponsored</div>'
+          + '<div class="sponsored-row">' + cards + '</div></div>';
+      } catch (err) {
+        el.innerHTML = '';
       }
     }
 

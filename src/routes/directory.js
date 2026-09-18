@@ -67,4 +67,54 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/directory/sponsored?limit=3 — a small, rotating subset of
+// Featured businesses for the main dashboard's "Sponsored" strip (a
+// separate, higher-visibility spot from the full directory page, which
+// already lists every Featured business up top with no need to rotate).
+//
+// With potentially hundreds of Featured businesses and only a handful of
+// slots here, showing "the same first few" every time would make paying
+// for Featured pointless for anyone not in that lucky first slice. This
+// uses a deterministic, clock-based rotation instead of randomness:
+// businesses are pulled in a stable order (by id), time is divided into
+// fixed windows (ROTATION_MS), and each window starts at a different
+// offset into that list, wrapping around. Over enough windows every
+// Featured business gets an equal number of "in a slot" windows — genuine
+// fairness, not luck — and (unlike per-visitor randomness) everyone looking
+// at the site in the same minute sees the same sponsors, which is both
+// simpler to reason about and friendlier to the dashboard's own caching.
+const ROTATION_MS = 60 * 1000;
+
+router.get('/sponsored', async (req, res) => {
+  if (!supabaseConfigured()) {
+    return res.json({ configured: false, businesses: [] });
+  }
+
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 3, 1), 10);
+
+    const { data, error } = await supabaseAdmin
+      .from('businesses')
+      .select('id, name, category, description, website, logo_url')
+      .eq('subscription_status', 'active')
+      .order('id'); // stable, arbitrary-but-fixed order — the rotation offset is what actually varies, not this
+    if (error) throw new Error(error.message);
+
+    const featured = data || [];
+    if (!featured.length) {
+      return res.json({ configured: true, businesses: [] });
+    }
+
+    const windowIndex = Math.floor(Date.now() / ROTATION_MS);
+    const offset = windowIndex % featured.length;
+    const slotCount = Math.min(limit, featured.length);
+    const businesses = Array.from({ length: slotCount }, (_, i) => featured[(offset + i) % featured.length]);
+
+    res.json({ configured: true, businesses, rotatesEverySeconds: ROTATION_MS / 1000 });
+  } catch (err) {
+    console.error('[directory] sponsored failed:', err.message);
+    res.status(500).json({ error: 'Sponsored businesses temporarily unavailable' });
+  }
+});
+
 module.exports = router;
