@@ -15,6 +15,7 @@ const { getWeather } = require('../fetchers/weather');
 const { getTideTimes } = require('../fetchers/tides');
 const { getTrafficIncidents } = require('../fetchers/traffic');
 const { getFloodAndRiverLevels } = require('../fetchers/floodMonitoring');
+const { getPollen } = require('../fetchers/pollen');
 
 // Europe/London hour as an integer 0-23, DST-aware — matches the timezone
 // every other fetcher in this project already uses (see weather.js's
@@ -41,7 +42,7 @@ function greetingForHour(hour) {
   return 'Good evening';
 }
 
-function digestHtml({ location, weather, tides, traffic, flood, hour }) {
+function digestHtml({ location, weather, tides, traffic, flood, pollen, hour }) {
   const greeting = greetingForHour(hour);
   const w = weather && !weather.unavailable ? weather.current : null;
   const forecastToday = weather && !weather.unavailable ? (weather.forecast || [])[0] : null;
@@ -86,6 +87,23 @@ function digestHtml({ location, weather, tides, traffic, flood, hour }) {
       ? 'No flood or river warnings currently active in Cornwall'
       : `⚠️ ${activeWarnings.length} flood/river warning${activeWarnings.length === 1 ? '' : 's'} active in Cornwall — most severe: ${activeWarnings[0].severity}${activeWarnings[0].description ? ' (' + activeWarnings[0].description + ')' : ''}`);
 
+  // Pollen — opt-in on the site as a whole (GOOGLE_MAPS_API_KEY, see
+  // fetchers/pollen.js) since it's the one paid-only data source in the
+  // project. `configured: false` means the admin hasn't turned it on
+  // anywhere, not that today's count is unavailable, so that case is left
+  // out of the email entirely rather than telling a subscriber "pollen
+  // unavailable" for a feature that was never live for them. Only
+  // in-season types are worth a hay-fever sufferer's attention — grass/tree/
+  // weed pollen with no season data isn't currently affecting anyone.
+  const pollenTypes = pollen && pollen.configured && Array.isArray(pollen.types)
+    ? pollen.types.filter((t) => t.inSeason && t.category)
+    : null;
+  const pollenLine = pollenTypes == null
+    ? ''
+    : (pollenTypes.length === 0
+      ? '🌼 Pollen: nothing significant in season today'
+      : `🌼 Pollen: ${pollenTypes.map((t) => `${t.displayName} ${t.category}`).join(', ')}`);
+
   const appUrl = process.env.APP_BASE_URL || 'https://cornwallradar.co.uk';
 
   return `
@@ -93,6 +111,7 @@ function digestHtml({ location, weather, tides, traffic, flood, hour }) {
       <h2 style="color:#076b4a; margin-bottom: 4px;">${greeting} — here's ${location.label}</h2>
       <p style="font-size:1.1em; margin: 12px 0 4px;">${weatherLine}</p>
       ${forecastLine ? `<p style="margin: 2px 0;">${forecastLine}</p>` : ''}
+      ${pollenLine ? `<p style="margin: 10px 0 2px;">${pollenLine}</p>` : ''}
       ${tideLine ? `<p style="margin: 10px 0 2px;">🌊 ${tideLine}</p>` : ''}
       ${trafficHeadline ? `<p style="margin: 10px 0 2px;">🚗 ${trafficHeadline}${trafficDetail ? ` — ${trafficDetail}` : ''}</p>` : ''}
       ${floodLine ? `<p style="margin: 10px 0 2px;">${floodLine}</p>` : ''}
@@ -142,17 +161,18 @@ async function runMorningDigest() {
         .maybeSingle();
       if (already) continue;
 
-      const [weather, tides, traffic, flood] = await Promise.all([
+      const [weather, tides, traffic, flood, pollen] = await Promise.all([
         getWeather(location.lat, location.lng).catch((e) => ({ unavailable: true, error: e.message })),
         getTideTimes({ lat: location.lat, lon: location.lng }).catch((e) => ({ unavailable: true, error: e.message })),
         getTrafficIncidents({ lat: location.lat, lon: location.lng }).catch((e) => ({ unavailable: true, error: e.message })),
         getFloodAndRiverLevels({ lat: location.lat, lon: location.lng }).catch((e) => ({ unavailable: true, error: e.message })),
+        getPollen(location.lat, location.lng).catch((e) => ({ unavailable: true, error: e.message })),
       ]);
 
       await sendEmail({
         to: consumer.email,
         subject: `Your Cornwall Radar digest — ${location.label}`,
-        html: digestHtml({ location, weather, tides, traffic, flood, hour }),
+        html: digestHtml({ location, weather, tides, traffic, flood, pollen, hour }),
       });
 
       await supabaseAdmin.from('alert_log').insert({
