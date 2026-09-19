@@ -462,7 +462,13 @@
       font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
       color: var(--text-3); margin: 0 2px 6px;
     }
-    .sponsored-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 2px; }
+    /* space-between so a handful of cards spread across the row's full
+       width (e.g. 3 cards on a wide desktop row that could fit 5 sit at
+       both ends with one in the middle) instead of bunching to the left
+       with a slab of empty space on the right. Once there are enough
+       sponsors to fill or overflow the row, this has no visible effect —
+       it only kicks in when there's spare room to distribute. */
+    .sponsored-row { display: flex; justify-content: space-between; gap: 10px; overflow-x: auto; padding-bottom: 2px; }
     .sponsored-card {
       flex: 0 0 auto; width: 168px; background: var(--card-bg); border-radius: var(--radius-md);
       padding: 12px; box-shadow: var(--shadow-sm); text-align: left; text-decoration: none; color: inherit;
