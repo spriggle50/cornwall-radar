@@ -438,7 +438,10 @@
     }
     .directory-row:first-child { border-top: none; }
     .directory-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-    .directory-row-logo { width: 44px; height: 44px; object-fit: cover; border-radius: var(--radius-sm); flex-shrink: 0; }
+    .directory-row-logo {
+      width: 44px; height: 44px; object-fit: contain; border-radius: var(--radius-sm); flex-shrink: 0;
+      background: #fff; border: 1px solid var(--border); padding: 3px; box-sizing: border-box;
+    }
     .directory-row-name { font-weight: 700; font-size: 0.95rem; }
     .directory-row-category { font-size: 0.76rem; color: var(--text-2); margin-top: 1px; }
     .directory-row-desc { font-size: 0.85rem; color: var(--text-2); margin: 6px 0 0; line-height: 1.45; }
@@ -470,7 +473,8 @@
        plain directory listing rows below — it should feel like the premium
        spot it is. */
     .sponsored-card-logo {
-      width: 64px; height: 64px; object-fit: cover; border-radius: var(--radius-sm); margin-bottom: 8px;
+      width: 64px; height: 64px; object-fit: contain; border-radius: var(--radius-sm); margin-bottom: 8px;
+      background: #fff; border: 1px solid var(--border); padding: 5px; box-sizing: border-box;
     }
     .sponsored-card-name { font-weight: 700; font-size: 0.85rem; line-height: 1.25; }
     .sponsored-card-category { font-size: 0.72rem; color: var(--text-2); margin-top: 2px; }
@@ -2034,7 +2038,8 @@
       // `business` is already set.
       const logoBlock = !business ? '' : (
         '<div class="account-field"><label>Logo (optional)</label>'
-        + (business.logo_url ? '<img src="' + business.logo_url + '" alt="" style="display:block; width:64px; height:64px; object-fit:cover; border-radius:var(--radius-sm); margin-bottom:8px;" />' : '')
+        + '<p class="account-note">Square image works best, e.g. 512×512px, cropped tight to the logo with little empty space around it. PNG, JPEG or WebP, up to 2MB.</p>'
+        + (business.logo_url ? '<img src="' + business.logo_url + '" alt="" style="display:block; width:64px; height:64px; object-fit:contain; background:#fff; border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:8px; box-sizing:border-box; padding:4px;" />' : '')
         + '<input type="file" id="bizLogoFile" accept="image/png,image/jpeg,image/webp" />'
         + '<button class="btn-secondary" style="margin-top:8px;" onclick="uploadBusinessLogo()">' + (business.logo_url ? 'Replace logo' : 'Upload logo') + '</button>'
         + '<div id="bizLogoStatusMsg"></div>'
