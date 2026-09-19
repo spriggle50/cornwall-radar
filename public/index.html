@@ -1717,24 +1717,45 @@
     // and the digest do. ─────────────────────────────────────────────────
     let directoryFilters = { q: '', category: '' };
 
+    // Fetched once and memoized — the fixed category list barely ever
+    // changes, so there's no reason to re-fetch it every time the
+    // directory or the "list your business" form is opened. Both use this
+    // exact same list (server-side source of truth: lib/businessCategories.js)
+    // so a category can never drift into free text again.
+    let businessCategoriesPromise = null;
+    function getBusinessCategories() {
+      if (!businessCategoriesPromise) {
+        businessCategoriesPromise = fetch('/api/directory/categories')
+          .then((r) => r.json())
+          .then((d) => (d && d.categories) || [])
+          .catch(() => []);
+      }
+      return businessCategoriesPromise;
+    }
+
     async function renderDirectoryDetail() {
       const panel = document.getElementById('detailPanel');
       const backBtn = '<button class="back-btn" onclick="closeDetail()">← Back</button>';
       panel.innerHTML = backBtn + '<div class="card"><h2>🏪 Business Directory</h2><p class="unavailable">Loading…</p></div>';
 
       let data;
+      let categories = [];
       try {
         const params = new URLSearchParams();
         if (directoryFilters.q) params.set('q', directoryFilters.q);
         if (directoryFilters.category) params.set('category', directoryFilters.category);
         if (currentLocation) { params.set('lat', currentLocation.lat); params.set('lon', currentLocation.lon); }
-        const res = await fetch('/api/directory' + (params.toString() ? '?' + params.toString() : ''));
+        const [res, cats] = await Promise.all([
+          fetch('/api/directory' + (params.toString() ? '?' + params.toString() : '')),
+          getBusinessCategories(),
+        ]);
         data = await res.json();
+        categories = cats;
       } catch (err) {
         data = { configured: true, businesses: [], error: err.message };
       }
 
-      panel.innerHTML = backBtn + renderDirectoryCard(data);
+      panel.innerHTML = backBtn + renderDirectoryCard(data, categories);
       // Re-focus the search box and put the cursor back at the end after a
       // re-render, so typing a search term doesn't feel like it keeps
       // losing focus after every keystroke-triggered refresh.
@@ -1759,12 +1780,14 @@
       renderDirectoryDetail();
     }
 
-    function renderDirectoryCard(data) {
+    function renderDirectoryCard(data, categories) {
+      const categoryOptions = '<option value="">All categories</option>'
+        + (categories || []).map((c) => '<option value="' + c.replace(/"/g, '&quot;') + '"'
+          + (directoryFilters.category === c ? ' selected' : '') + '>' + c + '</option>').join('');
       const searchBar = '<div class="directory-search-bar">'
         + '<input type="text" id="directorySearchInput" placeholder="Search businesses…" value="'
         + (directoryFilters.q || '').replace(/"/g, '&quot;') + '" oninput="onDirectorySearchInput(this.value)" />'
-        + '<input type="text" id="directoryCategoryInput" placeholder="Category (e.g. cafe)" value="'
-        + (directoryFilters.category || '').replace(/"/g, '&quot;') + '" onchange="onDirectoryCategoryChange(this.value)" />'
+        + '<select id="directoryCategoryInput" onchange="onDirectoryCategoryChange(this.value)">' + categoryOptions + '</select>'
         + '</div>';
 
       const businesses = (data && data.businesses) || [];
@@ -1819,6 +1842,7 @@
     let publicConfig = null;     // { supabaseUrl, supabaseAnonKey } from /api/public-config
     let accountData = null;      // last-fetched /api/account/me payload
     let businessData = null;     // last-fetched /api/business/me payload's `business` (or null)
+    let businessCategories = []; // last-fetched fixed category list, for the listing form's dropdown
 
     async function initAccount() {
       try {
@@ -1923,12 +1947,14 @@
         // failing call doesn't hold up the other. Business is genuinely
         // optional (most consumers never create one), so its own failure
         // degrades to "no listing" rather than blocking the whole panel.
-        const [account, businessResp] = await Promise.all([
+        const [account, businessResp, categories] = await Promise.all([
           authedFetch('/api/account/me'),
           authedFetch('/api/business/me').catch(() => ({ business: null })),
+          getBusinessCategories(),
         ]);
         accountData = account;
         businessData = businessResp.business;
+        businessCategories = categories;
         panel.innerHTML = backBtn + msgSlot + renderAccountCards(accountData) + renderBusinessCards(businessData);
       } catch (err) {
         panel.innerHTML = backBtn + msgSlot + '<div class="card"><p class="account-error">' + err.message + '</p></div>';
@@ -2072,7 +2098,11 @@
           ? '<p class="account-note">Visible in the public Business Directory right now. Editing below updates it instantly.</p>'
           : '<p class="account-note">Free to list — fill this in to appear in the Business Directory.</p>')
         + '<div class="account-field"><label>Business name</label><input type="text" id="bizName" value="' + esc(business && business.name) + '" placeholder="The Cornish Bakery" /></div>'
-        + '<div class="account-field"><label>Category</label><input type="text" id="bizCategory" value="' + esc(business && business.category) + '" placeholder="Cafe, plumber, hair salon…" /></div>'
+        + '<div class="account-field"><label>Category</label><select id="bizCategory">'
+        + '<option value="">Choose a category…</option>'
+        + businessCategories.map((c) => '<option value="' + esc(c) + '"'
+          + (business && business.category === c ? ' selected' : '') + '>' + c + '</option>').join('')
+        + '</select></div>'
         + '<div class="account-field"><label>Postcode or town</label><input type="text" id="bizPostcode" value="' + esc(business && business.postcode) + '" placeholder="TR1 2AB" /></div>'
         + '<div class="account-field"><label>Description (optional)</label><input type="text" id="bizDescription" value="' + esc(business && business.description) + '" placeholder="What you do, in a sentence" /></div>'
         + '<div class="account-field"><label>Phone (optional)</label><input type="text" id="bizPhone" value="' + esc(business && business.phone) + '" placeholder="01872 000000" /></div>'

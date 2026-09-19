@@ -7,6 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabaseAdmin, isConfigured: supabaseConfigured } = require('../lib/supabaseClient');
+const { BUSINESS_CATEGORIES } = require('../lib/businessCategories');
 
 // Same haversine approach as the rest of the project's distance-based
 // sorting (e.g. cornwallTowns.js's nearestTown) — plain lat/lon great-circle
@@ -19,6 +20,16 @@ function distanceKm(lat1, lon1, lat2, lon2) {
     + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
+
+// GET /api/directory/categories — the fixed list a listing's category is
+// chosen from (see lib/businessCategories.js), served publicly so the
+// frontend can build BOTH the "list your business" form's dropdown and
+// the directory's filter dropdown from the exact same list without
+// duplicating it in the static HTML/JS. No auth needed — this is just a
+// list of strings, not business data.
+router.get('/categories', (req, res) => {
+  res.json({ categories: BUSINESS_CATEGORIES });
+});
 
 router.get('/', async (req, res) => {
   if (!supabaseConfigured()) {
@@ -36,8 +47,27 @@ router.get('/', async (req, res) => {
       query = query.ilike('category', category.trim());
     }
     if (q && q.trim()) {
-      const term = `%${q.trim()}%`;
-      query = query.or(`name.ilike.${term},description.ilike.${term}`);
+      // Word-by-word rather than one literal phrase match: the previous
+      // version required the whole search string to appear verbatim in
+      // name/description, so "fish chips" never matched "The Fish & Chip
+      // Shop" (the "&" breaks the substring) and word order/spacing had
+      // to line up exactly. Splitting into words and requiring each one
+      // to appear SOMEWHERE in name or description (chaining .or() calls,
+      // which supabase/PostgREST ANDs together) matches regardless of
+      // order, punctuation in between, or which field each word is in.
+      // Capped at 6 words — plenty for a business name search, and keeps
+      // a pathologically long query from building an enormous filter.
+      const words = q.trim().split(/\s+/).filter(Boolean).slice(0, 6);
+      for (const word of words) {
+        // Strip characters that are meaningful to PostgREST's filter-string
+        // syntax (comma separates or-conditions, parentheses group them,
+        // % is the ILIKE wildcard) so a stray character in someone's
+        // search can't break the query — just drops silently instead.
+        const cleaned = word.replace(/[,()%*]/g, '');
+        if (!cleaned) continue;
+        const term = `%${cleaned}%`;
+        query = query.or(`name.ilike.${term},description.ilike.${term}`);
+      }
     }
 
     const { data, error } = await query;

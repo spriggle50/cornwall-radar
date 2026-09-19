@@ -24,6 +24,8 @@ const { stripe } = require('../lib/stripeClient');
 const { supabaseAdmin } = require('../lib/supabaseClient');
 const { requireAuth } = require('../middleware/requireAuth');
 const { geocodeLocation } = require('../fetchers/geocode');
+const { BUSINESS_CATEGORIES } = require('../lib/businessCategories');
+const { sendEmail, isConfigured: emailConfigured } = require('../lib/emailClient');
 
 // Logos are small and few (one per business), so memory storage + a
 // straight-through upload to Supabase Storage is simpler than juggling temp
@@ -39,6 +41,73 @@ const ALLOWED_LOGO_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/web
 
 const STRIPE_BUSINESS_PRICE_ID = process.env.STRIPE_BUSINESS_PRICE_ID;
 const APP_BASE_URL = process.env.APP_BASE_URL || 'http://localhost:3000';
+
+// Admin moderation — see the /admin routes below. Both are opt-in: leave
+// either unset and the "new listing" email in PUT /listing simply isn't
+// sent (there'd be nothing safe to link to without a token anyway).
+const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL;
+const ADMIN_ACTION_TOKEN = process.env.ADMIN_ACTION_TOKEN;
+
+const escHtml = (v) => String(v == null ? '' : v).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+
+// ── Admin moderation: new-listing alert + one-click review/removal ────────
+// Listings go live instantly with no approval gate (see PUT /listing) —
+// this is "notify, then remove after the fact if needed" rather than
+// holding every listing for approval first. There's no admin-role concept
+// anywhere in this project's Supabase Auth, so these two routes are
+// deliberately NOT behind requireAuth — they're gated by a long random
+// shared secret (ADMIN_ACTION_TOKEN) known only to Ady, via the link in
+// the alert email, instead.
+//
+// The review step is a separate GET (safe, read-only) from the actual
+// delete (POST, only reachable by clicking the button on that page) on
+// purpose: some email clients and security scanners pre-fetch links in an
+// email to check them before a person ever clicks, so a plain GET link
+// that deleted the listing directly could get it removed automatically
+// before Ady even opens the email.
+function requireAdminToken(req, res, next) {
+  if (!ADMIN_ACTION_TOKEN || req.query.token !== ADMIN_ACTION_TOKEN) {
+    return res.status(403).send('Not authorized.');
+  }
+  next();
+}
+
+router.get('/admin/review/:id', requireAdminToken, async (req, res) => {
+  const { data: business, error } = await supabaseAdmin
+    .from('businesses')
+    .select('id, name, category, description, phone, website, postcode, email, subscription_status')
+    .eq('id', req.params.id)
+    .maybeSingle();
+  if (error || !business) {
+    return res.status(404).send('<p style="font-family: -apple-system, sans-serif;">Listing not found — it may already have been removed.</p>');
+  }
+
+  const removeUrl = `/api/business/admin/remove/${encodeURIComponent(business.id)}?token=${encodeURIComponent(req.query.token)}`;
+  res.send(`
+    <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 40px auto; color:#12181a; line-height:1.5;">
+      <h2 style="margin-bottom:4px;">${escHtml(business.name)}</h2>
+      <p style="color:#5b6b6a; margin-top:0;">${escHtml(business.category)} · ${escHtml(business.postcode)}</p>
+      ${business.description ? `<p>${escHtml(business.description)}</p>` : ''}
+      ${business.phone ? `<p><strong>Phone:</strong> ${escHtml(business.phone)}</p>` : ''}
+      ${business.website ? `<p><strong>Website:</strong> ${escHtml(business.website)}</p>` : ''}
+      <p><strong>Owner's login email:</strong> ${escHtml(business.email)}</p>
+      <p><strong>Status:</strong> ${escHtml(business.subscription_status)}</p>
+      <form method="POST" action="${removeUrl}" onsubmit="return confirm('Remove this listing from the directory? This can\\'t be undone.');">
+        <button type="submit" style="background:#c0392b; color:#fff; border:none; padding:10px 20px; border-radius:6px; font-size:1em; cursor:pointer;">Remove this listing</button>
+      </form>
+    </div>
+  `);
+});
+
+router.post('/admin/remove/:id', requireAdminToken, async (req, res) => {
+  try {
+    const { error } = await supabaseAdmin.from('businesses').delete().eq('id', req.params.id);
+    if (error) throw new Error(error.message);
+    res.send('<p style="font-family: -apple-system, sans-serif;">Listing removed.</p>');
+  } catch (err) {
+    res.status(500).send('<p style="font-family: -apple-system, sans-serif;">Could not remove listing: ' + escHtml(err.message || 'unknown error') + '</p>');
+  }
+});
 
 router.use(requireAuth);
 
@@ -69,8 +138,15 @@ router.get('/me', async (req, res) => {
 // lose their Featured status).
 router.put('/listing', async (req, res) => {
   const { name, category, description, phone, website, postcode } = req.body || {};
-  if (!name || !name.trim() || !category || !category.trim() || !postcode || !postcode.trim()) {
+  if (!name || !name.trim() || !postcode || !postcode.trim()) {
     return res.status(400).json({ error: 'A business name, category and postcode/town are all required' });
+  }
+  // Category used to be free text — now it's a fixed list (see
+  // lib/businessCategories.js) so the directory's filter dropdown has a
+  // consistent, non-duplicated set of values to offer instead of however
+  // each business happened to spell their trade.
+  if (!category || !BUSINESS_CATEGORIES.includes(category)) {
+    return res.status(400).json({ error: 'Choose a category from the list' });
   }
 
   try {
@@ -102,6 +178,27 @@ router.put('/listing', async (req, res) => {
       .select('id, name, category, description, phone, website, postcode, lat, lng, logo_url, subscription_status')
       .single();
     if (error) throw new Error(error.message);
+
+    // Only on genuine creation (no `existing` row before this upsert), not
+    // on every edit of an already-listed business — otherwise fixing a typo
+    // in your phone number would re-alert Ady every time. Fire-and-forget:
+    // a slow or misconfigured mailbox should never delay or fail the
+    // business owner's own save.
+    if (!existing && ADMIN_ALERT_EMAIL && ADMIN_ACTION_TOKEN && emailConfigured()) {
+      const reviewUrl = `${APP_BASE_URL}/api/business/admin/review/${data.id}?token=${encodeURIComponent(ADMIN_ACTION_TOKEN)}`;
+      sendEmail({
+        to: ADMIN_ALERT_EMAIL,
+        subject: `New business listing: ${data.name}`,
+        html: `
+          <div style="font-family: -apple-system, sans-serif; color:#12181a;">
+            <p>A new business listing just went live on Cornwall Radar:</p>
+            <p><strong>${escHtml(data.name)}</strong> — ${escHtml(data.category)} — ${escHtml(data.postcode)}</p>
+            ${data.description ? `<p>${escHtml(data.description)}</p>` : ''}
+            <p><a href="${reviewUrl}">Review it, and remove if needed →</a></p>
+          </div>
+        `,
+      }).catch((e) => console.error('[business] new-listing alert email failed:', e.message));
+    }
 
     res.json(data);
   } catch (err) {
