@@ -638,6 +638,7 @@
         startWorldClock();
         renderHubGrid();
         loadSponsoredStrip();
+        startSponsoredRotation();
       } catch (err) {
         document.getElementById('weatherSummary').innerHTML =
           '<div class="card"><p class="unavailable">Could not reach the dashboard API: ' + err.message + '</p></div>';
@@ -647,11 +648,14 @@
     // Fetched separately from the main dashboard aggregation above — this
     // is Business Directory data (see routes/directory.js's /sponsored
     // endpoint), not one of the weather/traffic/etc. sources, and rotates
-    // server-side on its own clock regardless of when a visitor's page
-    // happens to load. Fails silently (empty strip) rather than showing an
-    // error card — an empty "no sponsors yet" state isn't something a
-    // visitor needs to be told about, unlike a real dashboard source
-    // going down.
+    // server-side on its own clock (see ROTATION_MS there). Re-fetched
+    // below on a matching timer so a visitor who leaves the page open
+    // actually sees the rotation happen, rather than only getting a
+    // different set of sponsors on their next reload — a paying Featured
+    // business shouldn't rely on visitors refreshing to ever see their
+    // slot. Fails silently (empty strip) rather than showing an error
+    // card — an empty "no sponsors yet" state isn't something a visitor
+    // needs to be told about, unlike a real dashboard source going down.
     async function loadSponsoredStrip() {
       const el = document.getElementById('sponsoredStrip');
       try {
@@ -676,6 +680,16 @@
       } catch (err) {
         el.innerHTML = '';
       }
+    }
+
+    // Keeps the sponsored strip in sync with the server's own rotation
+    // window (60s — matches ROTATION_MS in routes/directory.js) so it
+    // visibly changes while someone is sitting on the page, not just
+    // between page loads. Cleared/restarted rather than left to stack up
+    // if loadDashboard ever runs again (e.g. switching saved locations).
+    function startSponsoredRotation() {
+      if (sponsoredStripInterval) clearInterval(sponsoredStripInterval);
+      sponsoredStripInterval = setInterval(loadSponsoredStrip, 60 * 1000);
     }
 
     const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1231,6 +1245,7 @@
       { label: 'Tokyo', tz: 'Asia/Tokyo' },
     ];
     let worldClockInterval = null;
+    let sponsoredStripInterval = null;
 
     function worldClockItemsHtml() {
       const now = new Date();
