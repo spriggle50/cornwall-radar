@@ -438,7 +438,7 @@
     }
     .directory-row:first-child { border-top: none; }
     .directory-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-    .directory-row-logo { width: 36px; height: 36px; object-fit: cover; border-radius: var(--radius-sm); flex-shrink: 0; }
+    .directory-row-logo { width: 44px; height: 44px; object-fit: cover; border-radius: var(--radius-sm); flex-shrink: 0; }
     .directory-row-name { font-weight: 700; font-size: 0.95rem; }
     .directory-row-category { font-size: 0.76rem; color: var(--text-2); margin-top: 1px; }
     .directory-row-desc { font-size: 0.85rem; color: var(--text-2); margin: 6px 0 0; line-height: 1.45; }
@@ -465,8 +465,12 @@
       padding: 12px; box-shadow: var(--shadow-sm); text-align: left; text-decoration: none; color: inherit;
       border: 1px solid var(--border);
     }
+    /* This is the actual "paying for visibility" real estate, so the logo
+       here is deliberately much bigger than the 36px thumbnail used in the
+       plain directory listing rows below — it should feel like the premium
+       spot it is. */
     .sponsored-card-logo {
-      width: 36px; height: 36px; object-fit: cover; border-radius: var(--radius-sm); margin-bottom: 8px;
+      width: 64px; height: 64px; object-fit: cover; border-radius: var(--radius-sm); margin-bottom: 8px;
     }
     .sponsored-card-name { font-weight: 700; font-size: 0.85rem; line-height: 1.25; }
     .sponsored-card-category { font-size: 0.72rem; color: var(--text-2); margin-top: 2px; }
