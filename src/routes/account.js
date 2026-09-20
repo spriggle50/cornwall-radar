@@ -11,12 +11,14 @@ const { geocodeLocation } = require('../fetchers/geocode');
 
 router.use(requireAuth);
 
-// There's no separate "sign up" step — Supabase Auth handles the magic
-// link, and the first authenticated request against this backend just
-// creates the matching `consumers` row if it doesn't exist yet. Uses the
-// service-role client because `consumers` only has a SELECT policy for the
-// owner, not INSERT (see schema.sql) — a normal user token could never do
-// this insert itself, by design.
+// There's no separate "sign up" step here — Supabase Auth handles that
+// entirely client-side (magic link OR email+password, see index.html's
+// login card), and the first authenticated request against this backend
+// just creates the matching `consumers` row if it doesn't exist yet,
+// whichever way the person signed in. Uses the service-role client because
+// `consumers` only has a SELECT policy for the owner, not INSERT (see
+// schema.sql) — a normal user token could never do this insert itself, by
+// design.
 async function ensureConsumer(user) {
   const { data: existing, error: selErr } = await supabaseAdmin
     .from('consumers')

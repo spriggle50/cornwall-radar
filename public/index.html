@@ -1966,15 +1966,63 @@
       if (slot) slot.innerHTML = '<div class="card"><p class="account-error">' + message + '</p></div>';
     }
 
+    // Password sign-in is an ALTERNATIVE to the magic link, not a
+    // replacement — both hit the same Supabase Auth user record for a
+    // given email, so someone can start with a magic link and add a
+    // password later (see the "Set or change your password" field in
+    // renderAccountCards), or sign up with a password from the start.
+    // These two bits of UI state just control which form the login card
+    // shows; they reset to the default whenever the card is re-rendered
+    // from scratch (e.g. after signing out).
+    let loginMode = 'magiclink';   // 'magiclink' | 'password'
+    let passwordAction = 'signin'; // 'signin' | 'signup' — only shown in password mode
+
     function renderLoginCard() {
+      const existingEmail = document.getElementById('loginEmail');
+      const emailValue = existingEmail ? existingEmail.value : '';
+
+      let body;
+      if (loginMode === 'magiclink') {
+        body = '<div class="account-field"><label>Email address</label>'
+          + '<input type="email" id="loginEmail" placeholder="you@example.com" value="' + emailValue.replace(/"/g, '&quot;') + '" /></div>'
+          + '<button class="btn-primary" onclick="sendMagicLink()">Send me a sign-in link</button>';
+      } else {
+        const actionNote = passwordAction === 'signin'
+          ? 'New here? <a href="#" onclick="switchPasswordAction(\'signup\'); return false;">Create an account</a> instead.'
+          : 'Already have an account? <a href="#" onclick="switchPasswordAction(\'signin\'); return false;">Sign in</a> instead.';
+        body = '<p class="account-note" style="margin:0 0 10px;">' + actionNote + '</p>'
+          + '<div class="account-field"><label>Email address</label>'
+          + '<input type="email" id="loginEmail" placeholder="you@example.com" value="' + emailValue.replace(/"/g, '&quot;') + '" /></div>'
+          + '<div class="account-field"><label>Password</label>'
+          + '<input type="password" id="loginPassword" placeholder="' + (passwordAction === 'signup' ? 'At least 6 characters' : 'Your password') + '" /></div>'
+          + '<button class="btn-primary" onclick="' + (passwordAction === 'signup' ? 'signUpWithPassword()' : 'signInWithPasswordFlow()') + '">'
+          + (passwordAction === 'signup' ? 'Create account' : 'Sign in') + '</button>';
+      }
+
+      const modeToggle = loginMode === 'magiclink'
+        ? '<p class="account-note" style="margin-top:14px;">Prefer a password? <a href="#" onclick="switchLoginMode(\'password\'); return false;">Use a password instead</a></p>'
+        : '<p class="account-note" style="margin-top:14px;">Prefer not to set a password? <a href="#" onclick="switchLoginMode(\'magiclink\'); return false;">Use a magic link instead</a></p>';
+
       return '<div class="card"><h2>👤 Sign in</h2>'
         + '<p class="account-note">Sign in to save locations and set up your morning digest.</p>'
-        + '<div class="account-field"><label>Email address</label>'
-        + '<input type="email" id="loginEmail" placeholder="you@example.com" /></div>'
-        + '<button class="btn-primary" onclick="sendMagicLink()">Send me a sign-in link</button>'
+        + body
+        + modeToggle
         + '<div id="loginStatus"></div>'
         + '</div>';
     }
+
+    // Re-renders just the login card in place (used by the mode/action
+    // toggle links above) rather than the full renderAccountPanel, since
+    // that would re-check the session and briefly flash "Loading…" for no
+    // reason — nothing about the sign-in state has actually changed yet.
+    function refreshLoginCard() {
+      const panel = document.getElementById('accountPanel');
+      const backBtn = '<button class="back-btn" onclick="closeAccountPanel()">← Back</button>';
+      const msgSlot = '<div id="accountGlobalMsg"></div>';
+      panel.innerHTML = backBtn + msgSlot + renderLoginCard();
+    }
+    function switchLoginMode(mode) { loginMode = mode; passwordAction = 'signin'; refreshLoginCard(); }
+    function switchPasswordAction(action) { passwordAction = action; refreshLoginCard(); }
 
     async function sendMagicLink() {
       const email = document.getElementById('loginEmail').value.trim();
@@ -1988,6 +2036,52 @@
       status.innerHTML = error
         ? '<p class="account-error">' + error.message + '</p>'
         : '<p class="account-success">Check your email for a sign-in link.</p>';
+    }
+
+    async function signInWithPasswordFlow() {
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      const status = document.getElementById('loginStatus');
+      if (!email || !password) { status.innerHTML = '<p class="account-error">Enter your email and password</p>'; return; }
+      status.innerHTML = '<p class="account-note">Signing in…</p>';
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      // On success there's nothing to do here — the onAuthStateChange
+      // listener registered in initAccount() already re-renders the panel
+      // into the signed-in view. Only the failure case needs handling.
+      if (error) {
+        status.innerHTML = '<p class="account-error">' + (error.message === 'Invalid login credentials'
+          ? 'Incorrect email or password.'
+          : error.message) + '</p>';
+      }
+    }
+
+    async function signUpWithPassword() {
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      const status = document.getElementById('loginStatus');
+      if (!email || !password) { status.innerHTML = '<p class="account-error">Enter your email and password</p>'; return; }
+      if (password.length < 6) { status.innerHTML = '<p class="account-error">Password must be at least 6 characters</p>'; return; }
+      status.innerHTML = '<p class="account-note">Creating your account…</p>';
+      const { data, error } = await sb.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: window.location.origin },
+      });
+      if (error) {
+        status.innerHTML = '<p class="account-error">' + error.message + '</p>';
+        return;
+      }
+      // Supabase deliberately returns the same "success, check your email"
+      // shape whether this email is brand new or already has an account
+      // (so the response can't be used to check who's registered) — and
+      // whether a session comes back immediately depends on the Supabase
+      // project's "Confirm email" setting, which this app doesn't control.
+      // Either way, if a session DID come back, onAuthStateChange handles
+      // showing the signed-in view — this message only covers the
+      // "needs confirming" case.
+      if (!data.session) {
+        status.innerHTML = '<p class="account-success">Check your email to confirm your account. (Already signed up? Use "Sign in" above instead.)</p>';
+      }
     }
 
     async function signOut() {
@@ -2008,6 +2102,19 @@
           ? '<button class="btn-secondary" onclick="openBillingPortal()">Manage billing</button>'
           : '<button class="btn-primary" onclick="startCheckout()">Subscribe — £2.49/month</button>')
         + ' <button class="btn-secondary" onclick="signOut()" style="margin-left:8px;">Sign out</button>'
+        + '</div>';
+
+      // Lets a magic-link-only account add a password (so future sign-ins
+      // don't need an email round trip), or change one already set — same
+      // field either way, since there's no reliable client-side way to
+      // tell Supabase Auth "this account has no password yet" from a
+      // magic-link sign-in alone (both look the same auth-provider-wise).
+      const passwordCard = '<div class="card"><h2>🔒 Password</h2>'
+        + '<p class="account-note">Set or change your password so you can sign in with it instead of a magic link.</p>'
+        + '<div class="account-field"><label>New password</label>'
+        + '<input type="password" id="newPassword" placeholder="At least 6 characters" /></div>'
+        + '<button class="btn-secondary" onclick="setAccountPassword()">Save password</button>'
+        + '<div id="passwordStatusMsg"></div>'
         + '</div>';
 
       const locationRows = a.locations.length
@@ -2055,7 +2162,24 @@
           + '</div>';
       }
 
-      return profileCard + locationsCard + digestCard;
+      return profileCard + passwordCard + locationsCard + digestCard;
+    }
+
+    async function setAccountPassword() {
+      const password = document.getElementById('newPassword').value;
+      const status = document.getElementById('passwordStatusMsg');
+      if (!password || password.length < 6) {
+        status.innerHTML = '<p class="account-error">Password must be at least 6 characters</p>';
+        return;
+      }
+      status.innerHTML = '<p class="account-note">Saving…</p>';
+      const { error } = await sb.auth.updateUser({ password });
+      if (error) {
+        status.innerHTML = '<p class="account-error">' + error.message + '</p>';
+        return;
+      }
+      status.innerHTML = '<p class="account-success">Password saved — you can now sign in with your email and this password instead of a magic link.</p>';
+      document.getElementById('newPassword').value = '';
     }
 
     // ── Business directory: manage YOUR OWN listing (see routes/business.js).
