@@ -869,11 +869,17 @@
       // see renderDirectoryDetail), so this preview is just static copy
       // rather than a live count.
       if (key === 'directory') return 'Find local businesses, or list your own';
+      // Activities/vouchers aren't part of dashboardData either, same reason
+      // as the directory above — their own public endpoint, own filters.
+      if (key === 'activities') return 'Search things to do across Cornwall';
+      if (key === 'vouchers') return 'Local discounts and offers — free to browse';
       return '';
     }
 
     const HUB_SECTIONS = [
       { key: 'directory', icon: '🏪', title: 'Business Directory' },
+      { key: 'activities', icon: '🎡', title: 'Days Out & Activities' },
+      { key: 'vouchers', icon: '🎟️', title: 'Vouchers & Offers' },
       { key: 'weatherDetails', icon: '🌤️', title: 'Weather Details', photo: '/images/weather-hero.jpg' },
       { key: 'traffic', icon: '🚗', title: 'Traffic', photo: '/images/traffic-hero.jpg' },
       { key: 'buses', icon: '🚌', title: 'Live Buses', photo: '/images/buses-hero.jpg' },
@@ -924,6 +930,8 @@
       // demand), so it gets its own async render path instead of the
       // synchronous renderers map below.
       if (key === 'directory') { renderDirectoryDetail(); return; }
+      if (key === 'activities') { renderActivitiesDetail(); return; }
+      if (key === 'vouchers') { renderVouchersDetail(); return; }
 
       const renderers = {
         traffic: renderTrafficDetail,
@@ -1909,6 +1917,50 @@
       }
     }
 
+    function formatVoucherDate(dateStr) {
+      return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    // Shared by the full Business Directory, the Days Out & Activities view,
+    // and the Vouchers & Offers view — all three list the same kind of
+    // `businesses` rows from routes/directory.js, just with different
+    // filters applied server-side, so one row renderer covers all of them
+    // rather than three near-duplicate copies drifting out of sync.
+    function renderDirectoryRow(b) {
+      const phoneLine = b.phone ? '<a href="tel:' + b.phone.replace(/\s+/g, '') + '">' + b.phone + '</a>' : '';
+      const siteLine = b.website ? '<a href="' + b.website + '" target="_blank" rel="noopener">Website</a>' : '';
+      const distLine = b.distanceKm != null ? b.distanceKm + 'km away' : null;
+      const meta = [distLine, phoneLine, siteLine].filter(Boolean).join(' · ');
+      const logo = b.logo_url ? '<img src="' + b.logo_url + '" alt="" class="directory-row-logo" />' : '';
+      // Rating line is always a link — even with zero reviews yet — so
+      // "be the first to review" is one click away right from the list,
+      // rather than only reachable once someone else has already left one.
+      const ratingText = b.reviewCount
+        ? '★ ' + b.avgRating + ' (' + b.reviewCount + (b.reviewCount === 1 ? ' review' : ' reviews') + ')'
+        : 'No reviews yet';
+      const isExpanded = expandedReviewsFor === b.id;
+      const ratingLine = '<p class="directory-row-meta"><a href="#" class="review-toggle-link" onclick="event.preventDefault(); toggleReviews(\'' + b.id + '\');">'
+        + ratingText + (isExpanded ? ' · Hide' : ' · Show') + '</a></p>';
+      const voucherBlock = b.hasVoucher
+        ? '<p class="directory-row-meta" style="color: var(--accent-dark); font-weight:600;">🎟️ ' + b.voucherTitle
+          + (b.voucherExpiresAt ? ' — ends ' + formatVoucherDate(b.voucherExpiresAt) : '') + '</p>'
+          + (b.voucherDescription ? '<p class="directory-row-desc">' + b.voucherDescription + '</p>' : '')
+        : '';
+      return '<div class="directory-row">'
+        + '<div class="directory-row-top">'
+        + '<div style="display:flex; align-items:center; gap:10px;">' + logo
+        + '<div><div class="directory-row-name">' + b.name + '</div>'
+        + '<div class="directory-row-category">' + b.category + (b.postcode ? ' · ' + b.postcode : '') + '</div></div></div>'
+        + (b.featured ? '<span class="featured-badge">★ Featured</span>' : '')
+        + '</div>'
+        + (b.description ? '<p class="directory-row-desc">' + b.description + '</p>' : '')
+        + voucherBlock
+        + (meta ? '<p class="directory-row-meta">' + meta + '</p>' : '')
+        + ratingLine
+        + (isExpanded ? renderReviewsPanel(b.id) : '')
+        + '</div>';
+    }
+
     function renderDirectoryCard(data, categories) {
       const categoryOptions = '<option value="">All categories</option>'
         + (categories || []).map((c) => '<option value="' + c.replace(/"/g, '&quot;') + '"'
@@ -1929,34 +1981,7 @@
       } else if (!businesses.length) {
         body = '<p class="account-note">No businesses listed yet' + (directoryFilters.q || directoryFilters.category ? ' matching that search.' : ' — be the first!') + '</p>';
       } else {
-        body = businesses.map((b) => {
-          const phoneLine = b.phone ? '<a href="tel:' + b.phone.replace(/\s+/g, '') + '">' + b.phone + '</a>' : '';
-          const siteLine = b.website ? '<a href="' + b.website + '" target="_blank" rel="noopener">Website</a>' : '';
-          const distLine = b.distanceKm != null ? b.distanceKm + 'km away' : null;
-          const meta = [distLine, phoneLine, siteLine].filter(Boolean).join(' · ');
-          const logo = b.logo_url ? '<img src="' + b.logo_url + '" alt="" class="directory-row-logo" />' : '';
-          // Rating line is always a link — even with zero reviews yet — so
-          // "be the first to review" is one click away right from the list,
-          // rather than only reachable once someone else has already left one.
-          const ratingText = b.reviewCount
-            ? '★ ' + b.avgRating + ' (' + b.reviewCount + (b.reviewCount === 1 ? ' review' : ' reviews') + ')'
-            : 'No reviews yet';
-          const isExpanded = expandedReviewsFor === b.id;
-          const ratingLine = '<p class="directory-row-meta"><a href="#" class="review-toggle-link" onclick="event.preventDefault(); toggleReviews(\'' + b.id + '\');">'
-            + ratingText + (isExpanded ? ' · Hide' : ' · Show') + '</a></p>';
-          return '<div class="directory-row">'
-            + '<div class="directory-row-top">'
-            + '<div style="display:flex; align-items:center; gap:10px;">' + logo
-            + '<div><div class="directory-row-name">' + b.name + '</div>'
-            + '<div class="directory-row-category">' + b.category + (b.postcode ? ' · ' + b.postcode : '') + '</div></div></div>'
-            + (b.featured ? '<span class="featured-badge">★ Featured</span>' : '')
-            + '</div>'
-            + (b.description ? '<p class="directory-row-desc">' + b.description + '</p>' : '')
-            + (meta ? '<p class="directory-row-meta">' + meta + '</p>' : '')
-            + ratingLine
-            + (isExpanded ? renderReviewsPanel(b.id) : '')
-            + '</div>';
-        }).join('');
+        body = businesses.map(renderDirectoryRow).join('');
       }
 
       return '<div class="card"><h2>🏪 Business Directory</h2>'
@@ -1968,6 +1993,147 @@
         + '<h2>📋 Own a local business?</h2>'
         + '<p class="account-note">Add your business for free, or upgrade to Featured so you show up first.</p>'
         + '<button class="btn-primary" onclick="closeDetail(); openAccountPanel();">List your business</button>'
+        + '</div>';
+    }
+
+    // ── Days Out & Activities — "things to do" for locals/visitors,
+    // reusing the same businesses table/directory endpoint as the Business
+    // Directory above, just pre-filtered to the "Days Out & Attractions"
+    // category (see lib/businessCategories.js) instead of offering every
+    // category. Attraction/activity providers list themselves exactly the
+    // same way any other business does, from the account panel.
+    const ACTIVITIES_CATEGORY = 'Days Out & Attractions';
+    let activitiesFilters = { q: '' };
+
+    async function renderActivitiesDetail() {
+      const panel = document.getElementById('detailPanel');
+      const backBtn = '<button class="back-btn" onclick="closeDetail()">← Back</button>';
+      panel.innerHTML = backBtn + '<div class="card"><h2>🎡 Days Out & Activities</h2><p class="unavailable">Loading…</p></div>';
+
+      let data;
+      try {
+        const params = new URLSearchParams();
+        params.set('category', ACTIVITIES_CATEGORY);
+        if (activitiesFilters.q) params.set('q', activitiesFilters.q);
+        if (currentLocation) { params.set('lat', currentLocation.lat); params.set('lon', currentLocation.lon); }
+        const res = await fetch('/api/directory?' + params.toString());
+        data = await res.json();
+      } catch (err) {
+        data = { configured: true, businesses: [], error: err.message };
+      }
+
+      panel.innerHTML = backBtn + renderActivitiesCard(data);
+      const input = document.getElementById('activitiesSearchInput');
+      if (input && document.activeElement !== input) {
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+    }
+
+    let activitiesSearchTimer = null;
+    function onActivitiesSearchInput(value) {
+      activitiesFilters.q = value;
+      clearTimeout(activitiesSearchTimer);
+      activitiesSearchTimer = setTimeout(renderActivitiesDetail, 350);
+    }
+
+    function renderActivitiesCard(data) {
+      const searchBar = '<div class="directory-search-bar">'
+        + '<input type="text" id="activitiesSearchInput" placeholder="Search things to do…" value="'
+        + (activitiesFilters.q || '').replace(/"/g, '&quot;') + '" oninput="onActivitiesSearchInput(this.value)" />'
+        + '</div>';
+
+      const businesses = (data && data.businesses) || [];
+
+      let body;
+      if (data && data.configured === false) {
+        body = '<p class="unavailable">' + (data.message || 'Not set up yet') + '</p>';
+      } else if (data && data.error) {
+        body = '<p class="unavailable">Could not load activities right now.</p>';
+      } else if (!businesses.length) {
+        body = '<p class="account-note">No days out or activities listed yet' + (activitiesFilters.q ? ' matching that search.' : ' — check back soon, or list one from the account panel!') + '</p>';
+      } else {
+        body = businesses.map(renderDirectoryRow).join('');
+      }
+
+      return '<div class="card"><h2>🎡 Days Out & Activities</h2>'
+        + '<p class="section-subtitle">Places to visit and things to do across Cornwall — Featured listings appear first.</p>'
+        + searchBar
+        + body
+        + '</div>'
+        + '<div class="card">'
+        + '<h2>📋 Run an attraction or activity?</h2>'
+        + '<p class="account-note">List it for free under "' + ACTIVITIES_CATEGORY + '", and add a voucher too, from the account panel.</p>'
+        + '<button class="btn-primary" onclick="closeDetail(); openAccountPanel();">List your business</button>'
+        + '</div>';
+    }
+
+    // ── Vouchers & Offers — every listing (any category) that currently has
+    // a live voucher (routes/directory.js's ?voucher=1, which also drops
+    // any that have passed their expiry date). Open to everyone, not paid-
+    // tier-gated — see the Cornwall Radar decision this was built against.
+    let vouchersFilters = { q: '' };
+
+    async function renderVouchersDetail() {
+      const panel = document.getElementById('detailPanel');
+      const backBtn = '<button class="back-btn" onclick="closeDetail()">← Back</button>';
+      panel.innerHTML = backBtn + '<div class="card"><h2>🎟️ Vouchers & Offers</h2><p class="unavailable">Loading…</p></div>';
+
+      let data;
+      try {
+        const params = new URLSearchParams();
+        params.set('voucher', '1');
+        if (vouchersFilters.q) params.set('q', vouchersFilters.q);
+        if (currentLocation) { params.set('lat', currentLocation.lat); params.set('lon', currentLocation.lon); }
+        const res = await fetch('/api/directory?' + params.toString());
+        data = await res.json();
+      } catch (err) {
+        data = { configured: true, businesses: [], error: err.message };
+      }
+
+      panel.innerHTML = backBtn + renderVouchersCard(data);
+      const input = document.getElementById('vouchersSearchInput');
+      if (input && document.activeElement !== input) {
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+    }
+
+    let vouchersSearchTimer = null;
+    function onVouchersSearchInput(value) {
+      vouchersFilters.q = value;
+      clearTimeout(vouchersSearchTimer);
+      vouchersSearchTimer = setTimeout(renderVouchersDetail, 350);
+    }
+
+    function renderVouchersCard(data) {
+      const searchBar = '<div class="directory-search-bar">'
+        + '<input type="text" id="vouchersSearchInput" placeholder="Search offers…" value="'
+        + (vouchersFilters.q || '').replace(/"/g, '&quot;') + '" oninput="onVouchersSearchInput(this.value)" />'
+        + '</div>';
+
+      const businesses = (data && data.businesses) || [];
+
+      let body;
+      if (data && data.configured === false) {
+        body = '<p class="unavailable">' + (data.message || 'Not set up yet') + '</p>';
+      } else if (data && data.error) {
+        body = '<p class="unavailable">Could not load offers right now.</p>';
+      } else if (!businesses.length) {
+        body = '<p class="account-note">No offers listed right now' + (vouchersFilters.q ? ' matching that search.' : ' — check back soon.') + '</p>';
+      } else {
+        body = businesses.map(renderDirectoryRow).join('');
+      }
+
+      return '<div class="card"><h2>🎟️ Vouchers & Offers</h2>'
+        + '<p class="section-subtitle">Discounts and offers from local businesses — free for everyone to browse.</p>'
+        + searchBar
+        + body
+        + '</div>'
+        + '<div class="card">'
+        + '<h2>📋 Own a local business?</h2>'
+        + '<p class="account-note">Add a voucher to your listing for free, from the account panel — any category.</p>'
+        + '<button class="btn-primary" onclick="closeDetail(); openAccountPanel();">Manage your listing</button>'
         + '</div>';
     }
 
@@ -2874,6 +3040,13 @@
         + '<div class="account-field"><label>Description (optional)</label><input type="text" id="bizDescription" value="' + esc(business && business.description) + '" placeholder="What you do, in a sentence" /></div>'
         + '<div class="account-field"><label>Phone (optional)</label><input type="text" id="bizPhone" value="' + esc(business && business.phone) + '" placeholder="01872 000000" /></div>'
         + '<div class="account-field"><label>Website (optional)</label><input type="text" id="bizWebsite" value="' + esc(business && business.website) + '" placeholder="https://…" /></div>'
+        + '<div class="account-field"><label>Voucher / offer (optional)</label>'
+        + '<p class="account-note">Shown to everyone on the Vouchers & Offers page, and as a badge on your listing. Leave the title blank to remove it.</p>'
+        + '<input type="text" id="bizVoucherTitle" value="' + esc(business && business.voucher_title) + '" placeholder="e.g. 20% off entry" style="margin-bottom:6px;" />'
+        + '<input type="text" id="bizVoucherDescription" value="' + esc(business && business.voucher_description) + '" placeholder="Details, e.g. how to redeem (optional)" style="margin-bottom:6px;" />'
+        + '<label style="font-weight:400; font-size:0.82rem;">Ends on (optional)</label>'
+        + '<input type="date" id="bizVoucherExpiresAt" value="' + esc(business && business.voucher_expires_at) + '" />'
+        + '</div>'
         + logoBlock
         + '<button class="' + (business ? 'btn-secondary' : 'btn-primary') + '" onclick="saveBusinessListing()">' + (business ? 'Save changes' : 'Create listing') + '</button>'
         + (business ? ' ' + billingBtn + removeBtn : '')
@@ -3044,16 +3217,23 @@
       const description = document.getElementById('bizDescription').value.trim();
       const phone = document.getElementById('bizPhone').value.trim();
       const website = document.getElementById('bizWebsite').value.trim();
+      const voucherTitle = document.getElementById('bizVoucherTitle').value.trim();
+      const voucherDescription = document.getElementById('bizVoucherDescription').value.trim();
+      const voucherExpiresAt = document.getElementById('bizVoucherExpiresAt').value.trim();
       const status = document.getElementById('businessStatusMsg');
       if (!name || !category || !postcode) {
         status.innerHTML = '<p class="account-error">Business name, category and postcode/town are required</p>';
+        return;
+      }
+      if (!voucherTitle && (voucherDescription || voucherExpiresAt)) {
+        status.innerHTML = '<p class="account-error">A voucher needs a short title</p>';
         return;
       }
       status.innerHTML = '<p class="account-note">Saving…</p>';
       try {
         await authedFetch('/api/business/listing', {
           method: 'PUT',
-          body: JSON.stringify({ name, category, postcode, description, phone, website }),
+          body: JSON.stringify({ name, category, postcode, description, phone, website, voucherTitle, voucherDescription, voucherExpiresAt }),
         });
         renderAccountPanel();
       } catch (err) {

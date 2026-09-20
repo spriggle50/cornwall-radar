@@ -28,6 +28,7 @@ const BUSINESS_CATEGORIES = [
   'Farm Shops & Local Produce',
   'Accommodation',
   'Arts, Crafts & Gifts',
+  'Days Out & Attractions',
   'Events & Entertainment',
   'Photography & Media',
   'IT & Tech Services',

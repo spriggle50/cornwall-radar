@@ -120,7 +120,7 @@ router.get('/me', async (req, res) => {
   try {
     const { data: business, error } = await supabaseAdmin
       .from('businesses')
-      .select('id, name, category, description, phone, website, postcode, lat, lng, logo_url, subscription_status')
+      .select('id, name, category, description, phone, website, postcode, lat, lng, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at')
       .eq('id', req.user.id)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -137,7 +137,7 @@ router.get('/me', async (req, res) => {
 // preserved across edits (a business editing their opening hours shouldn't
 // lose their Featured status).
 router.put('/listing', async (req, res) => {
-  const { name, category, description, phone, website, postcode } = req.body || {};
+  const { name, category, description, phone, website, postcode, voucherTitle, voucherDescription, voucherExpiresAt } = req.body || {};
   if (!name || !name.trim() || !postcode || !postcode.trim()) {
     return res.status(400).json({ error: 'A business name, category and postcode/town are all required' });
   }
@@ -147,6 +147,28 @@ router.put('/listing', async (req, res) => {
   // each business happened to spell their trade.
   if (!category || !BUSINESS_CATEGORIES.includes(category)) {
     return res.status(400).json({ error: 'Choose a category from the list' });
+  }
+
+  // Voucher fields are optional and open to every category (not just Days
+  // Out & Attractions) — see routes/directory.js's ?voucher=1 filter and
+  // schema.sql's businesses.voucher_* columns. Same "editing always
+  // replaces" shape as the rest of this form: leaving voucherTitle blank
+  // clears any existing voucher rather than needing a separate "remove
+  // voucher" action.
+  const cleanVoucherTitle = (voucherTitle || '').trim() || null;
+  const cleanVoucherDescription = (voucherDescription || '').trim() || null;
+  let cleanVoucherExpiresAt = (voucherExpiresAt || '').trim() || null;
+  if (!cleanVoucherTitle && (cleanVoucherDescription || cleanVoucherExpiresAt)) {
+    return res.status(400).json({ error: 'A voucher needs a short title' });
+  }
+  if (cleanVoucherExpiresAt) {
+    const todayKey = new Date().toISOString().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanVoucherExpiresAt) || Number.isNaN(Date.parse(cleanVoucherExpiresAt))) {
+      return res.status(400).json({ error: 'Voucher expiry must be a valid date' });
+    }
+    if (cleanVoucherExpiresAt < todayKey) {
+      return res.status(400).json({ error: 'Voucher expiry date must be in the future' });
+    }
   }
 
   try {
@@ -174,8 +196,11 @@ router.put('/listing', async (req, res) => {
         logo_url: existing ? existing.logo_url : null,
         stripe_customer_id: existing ? existing.stripe_customer_id : null,
         subscription_status: existing ? existing.subscription_status : 'free',
+        voucher_title: cleanVoucherTitle,
+        voucher_description: cleanVoucherDescription,
+        voucher_expires_at: cleanVoucherExpiresAt,
       })
-      .select('id, name, category, description, phone, website, postcode, lat, lng, logo_url, subscription_status')
+      .select('id, name, category, description, phone, website, postcode, lat, lng, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at')
       .single();
     if (error) throw new Error(error.message);
 

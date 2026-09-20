@@ -58,14 +58,25 @@ router.get('/', async (req, res) => {
   }
 
   try {
-    const { q, category, lat, lon } = req.query;
+    const { q, category, lat, lon, voucher } = req.query;
 
     let query = supabaseAdmin
       .from('businesses')
-      .select('id, name, category, description, phone, website, postcode, lat, lng, logo_url, subscription_status');
+      .select('id, name, category, description, phone, website, postcode, lat, lng, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at');
 
     if (category && category.trim()) {
       query = query.ilike('category', category.trim());
+    }
+    // ?voucher=1 — used by the "Vouchers & Offers" page (any category, not
+    // just Days Out & Attractions) to show only listings currently offering
+    // one. A voucher with no voucher_expires_at runs indefinitely; one with
+    // a past expiry is treated as gone even though the row itself isn't
+    // deleted, so an owner doesn't have to remember to clear it the day it lapses.
+    if (voucher === '1' || voucher === 'true') {
+      const todayKey = new Date().toISOString().slice(0, 10);
+      query = query
+        .not('voucher_title', 'is', null)
+        .or(`voucher_expires_at.is.null,voucher_expires_at.gte.${todayKey}`);
     }
     if (q && q.trim()) {
       // Word-by-word rather than one literal phrase match: the previous
@@ -102,16 +113,28 @@ router.get('/', async (req, res) => {
 
     const userLat = lat != null ? parseFloat(lat) : null;
     const userLon = lon != null ? parseFloat(lon) : null;
+    const todayKey = new Date().toISOString().slice(0, 10);
 
-    const businesses = (data || []).map(({ subscription_status, ...b }) => ({
-      ...b,
-      featured: subscription_status === 'active',
-      avgRating: (ratings[b.id] && ratings[b.id].avgRating) || null,
-      reviewCount: (ratings[b.id] && ratings[b.id].reviewCount) || 0,
-      distanceKm: (userLat != null && userLon != null && b.lat != null && b.lng != null)
-        ? Math.round(distanceKm(userLat, userLon, b.lat, b.lng) * 10) / 10
-        : null,
-    }));
+    const businesses = (data || []).map(({ subscription_status, voucher_title, voucher_description, voucher_expires_at, ...b }) => {
+      // Same "not expired" rule as the ?voucher=1 filter above, applied here
+      // too so a lapsed voucher never shows as a badge on an ordinary
+      // directory/activities row even when this request wasn't filtered to
+      // vouchers only.
+      const voucherActive = !!voucher_title && (!voucher_expires_at || voucher_expires_at >= todayKey);
+      return {
+        ...b,
+        featured: subscription_status === 'active',
+        avgRating: (ratings[b.id] && ratings[b.id].avgRating) || null,
+        reviewCount: (ratings[b.id] && ratings[b.id].reviewCount) || 0,
+        distanceKm: (userLat != null && userLon != null && b.lat != null && b.lng != null)
+          ? Math.round(distanceKm(userLat, userLon, b.lat, b.lng) * 10) / 10
+          : null,
+        hasVoucher: voucherActive,
+        voucherTitle: voucherActive ? voucher_title : null,
+        voucherDescription: voucherActive ? voucher_description : null,
+        voucherExpiresAt: voucherActive ? voucher_expires_at : null,
+      };
+    });
 
     businesses.sort((a, b) => {
       if (a.featured !== b.featured) return a.featured ? -1 : 1;
