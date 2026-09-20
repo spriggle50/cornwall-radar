@@ -10,8 +10,10 @@ const businessRoute = require('./routes/business');
 const directoryRoute = require('./routes/directory');
 const reviewsRoute = require('./routes/reviews');
 const adminRoute = require('./routes/admin');
+const alertsRoute = require('./routes/alerts');
 const { geocodeLocation } = require('./fetchers/geocode');
 const { runMorningDigest } = require('./jobs/morningDigest');
+const { runAlertEngine } = require('./jobs/alertEngine');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -50,6 +52,9 @@ app.use('/api/reviews', reviewsRoute);
 // above, reachable while signed in instead of needing that specific email
 // (see middleware/requireAdmin.js for how "admin" is identified).
 app.use('/api/admin', adminRoute);
+// Alert preferences (morning digest, traffic, weather, wildlife) — actually
+// sending them happens in the two cron-triggered jobs below, not here.
+app.use('/api/alerts', alertsRoute);
 
 // GET /api/public-config — the handful of values the frontend needs to talk
 // to Supabase directly (its anon key is designed to be shared with the
@@ -72,6 +77,14 @@ app.get('/api/public-config', (req, res) => {
 // internet triggering real email sends to real subscribers, so it refuses
 // to run at all if CRON_SECRET isn't set, rather than falling back to
 // "open to everyone."
+//
+// Kept at this same URL/name (rather than adding a second cron endpoint
+// Ady would need to set up a second external pinger for) even though it now
+// runs BOTH scheduled jobs — the once-a-day digest and the alert engine's
+// traffic/weather/wildlife checks (jobs/alertEngine.js), which are meant to
+// run on every hourly hit, not just at each subscriber's chosen digest
+// hour. Whatever's already pinging this URL picks up the new behaviour
+// automatically on the next deploy — no scheduler config change needed.
 app.get('/api/cron/morning-digest', async (req, res) => {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
@@ -81,11 +94,14 @@ app.get('/api/cron/morning-digest', async (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   }
   try {
-    const result = await runMorningDigest();
-    res.json(result);
+    const [digest, alerts] = await Promise.all([
+      runMorningDigest(),
+      runAlertEngine(),
+    ]);
+    res.json({ digest, alerts });
   } catch (err) {
-    console.error('[cron] morning digest run failed:', err.message);
-    res.status(500).json({ error: 'Digest run failed — see server logs' });
+    console.error('[cron] scheduled run failed:', err.message);
+    res.status(500).json({ error: 'Scheduled run failed — see server logs' });
   }
 });
 
@@ -109,11 +125,11 @@ app.get('/api/geocode', async (req, res) => {
   }
 });
 
-// Accounts, saved locations, the morning-digest alert, and Stripe billing
-// (Phase 1.5) are wired up above. Still not built: the fuller alert engine
-// (Phase 2 — traffic-route/weather-warning/wildlife alerts, multiple
-// digests) and the amenities directory (Phase 3) — see
-// Cornwall-Radar-Spec.md §9 for the full roadmap.
+// Accounts, saved locations, Stripe billing (Phase 1.5), the amenities/
+// business directory (Phase 3), and the fuller alert engine (Phase 2 —
+// traffic-route/weather-warning/wildlife alerts, plus multiple digests via
+// routes/alerts.js) are all wired up above — see Cornwall-Radar-Spec.md §9
+// for the full original roadmap.
 
 app.listen(PORT, () => {
   console.log(`Cornwall Radar listening on http://localhost:${PORT}`);

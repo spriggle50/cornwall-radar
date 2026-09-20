@@ -1989,6 +1989,7 @@
     let reviewsCache = {};       // businessId -> { reviews, avgRating, reviewCount, myReview, isSignedIn }, filled by loadReviewsFor
     let adminBusinesses = null;  // last-fetched /api/admin/businesses payload, or null if this account isn't the admin (403) — see renderAdminCard
     let adminReviews = null;     // last-fetched /api/admin/reviews payload, or null if this account isn't the admin (403) — see renderAdminCard
+    let alertPreferences = [];   // last-fetched /api/alerts payload — one row per (location, alert type) the consumer has set up
 
     async function initAccount() {
       try {
@@ -2141,7 +2142,7 @@
         // here into `null`, which is how renderAdminCard tells "not an
         // admin, don't show this card at all" apart from "admin, but
         // nothing to moderate yet".
-        const [account, businessResp, categories, factorsResp, reviewsResp, adminBusinessesResp, adminReviewsResp] = await Promise.all([
+        const [account, businessResp, categories, factorsResp, reviewsResp, adminBusinessesResp, adminReviewsResp, alertsResp] = await Promise.all([
           authedFetch('/api/account/me'),
           authedFetch('/api/business/me').catch(() => ({ business: null })),
           getBusinessCategories(),
@@ -2149,6 +2150,7 @@
           authedFetch('/api/business/reviews').catch(() => ({ reviews: [] })),
           authedFetch('/api/admin/businesses').catch(() => null),
           authedFetch('/api/admin/reviews').catch(() => null),
+          authedFetch('/api/alerts').catch(() => ({ preferences: [] })),
         ]);
         accountData = account;
         businessData = businessResp.business;
@@ -2156,6 +2158,7 @@
         businessReviews = reviewsResp.reviews || [];
         adminBusinesses = adminBusinessesResp ? adminBusinessesResp.businesses : null;
         adminReviews = adminReviewsResp ? adminReviewsResp.reviews : null;
+        alertPreferences = alertsResp.preferences || [];
         const mfaFactors = (factorsResp && factorsResp.data && factorsResp.data.totp) || [];
         panel.innerHTML = backBtn + msgSlot + renderAccountCards(accountData, renderMfaCard(mfaFactors)) + renderBusinessCards(businessData, businessReviews) + renderAdminCard(adminBusinesses, adminReviews) + renderDangerZoneCard();
       } catch (err) {
@@ -2371,35 +2374,128 @@
         + '<div id="locationStatusMsg"></div>'
         + '</div>';
 
-      const digest = a.morningDigest;
-      const locationOptions = a.locations.map((loc) =>
-        '<option value="' + loc.id + '"' + (digest && digest.location_id === loc.id ? ' selected' : '') + '>' + loc.label + '</option>'
-      ).join('');
-      const hourOptions = Array.from({ length: 24 }, (_, h) => {
-        const label = (h % 12 === 0 ? 12 : h % 12) + ':00 ' + (h < 12 ? 'am' : 'pm');
-        const selected = digest && digest.config && digest.config.sendHour === h ? ' selected' : '';
-        return '<option value="' + h + '"' + selected + '>' + label + '</option>';
-      }).join('');
+      const alertCards = ALERT_TYPE_ORDER.map((type) => renderAlertTypeCard(type, a.isPaid, a.locations)).join('');
 
-      let digestCard;
-      if (!a.isPaid) {
-        digestCard = '<div class="card"><h2>☀️ Morning digest</h2>'
-          + '<p class="account-note">A daily email with weather, tides and traffic for one saved spot, sent at a time you choose. Available on the paid plan.</p>'
-          + '</div>';
-      } else if (!a.locations.length) {
-        digestCard = '<div class="card"><h2>☀️ Morning digest</h2>'
-          + '<p class="account-note">Add a saved location above first, then set up your digest here.</p></div>';
-      } else {
-        digestCard = '<div class="card"><h2>☀️ Morning digest</h2>'
-          + '<div class="account-field"><label>Send for</label><select id="digestLocation">' + locationOptions + '</select></div>'
-          + '<div class="account-field"><label>Send at</label><select id="digestHour">' + hourOptions + '</select></div>'
-          + '<button class="btn-primary" onclick="saveDigest(true)">' + (digest && digest.active ? 'Update digest' : 'Turn on digest') + '</button>'
-          + (digest && digest.active ? ' <button class="btn-secondary" onclick="saveDigest(false)" style="margin-left:8px;">Turn off</button>' : '')
-          + '<div id="digestStatusMsg"></div>'
-          + '</div>';
+      return profileCard + passwordCard + (mfaCardHtml || '') + locationsCard + alertCards;
+    }
+
+    // ── Alert preferences — morning digest, traffic, weather, wildlife.
+    // All four share one shape (routes/alerts.js): a list of saved-location
+    // rows the consumer has turned this alert on for, plus a form to add
+    // another. Only the digest needs an extra "send at" hour field — see
+    // ALERT_TYPE_META.needsHour.
+    const ALERT_TYPE_ORDER = ['morning_digest', 'traffic_route', 'weather_warning', 'wildlife_nearby'];
+    const ALERT_TYPE_META = {
+      morning_digest: {
+        icon: '☀️', title: 'Morning digest', needsHour: true,
+        description: 'A daily email with weather, tides, traffic and more for a saved spot, sent at a time you choose.',
+      },
+      traffic_route: {
+        icon: '🚗', title: 'Traffic alerts', needsHour: false,
+        description: 'An email when a notable traffic incident or road closure shows up near a saved spot.',
+      },
+      weather_warning: {
+        icon: '⛈️', title: 'Weather alerts', needsHour: false,
+        description: 'An email when high wind, heavy rain, extreme heat/cold, or an active flood warning is flagged for a saved spot — Cornwall Radar’s own threshold check, not an official Met Office warning.',
+      },
+      wildlife_nearby: {
+        icon: '🦊', title: 'Wildlife nearby', needsHour: false,
+        description: 'An email when a species is recently logged (GBIF) near a saved spot. Not filtered by rarity — just what’s been recorded close by recently.',
+      },
+    };
+
+    function formatHour(h) {
+      return (h % 12 === 0 ? 12 : h % 12) + ':00 ' + (h < 12 ? 'am' : 'pm');
+    }
+
+    function renderAlertTypeCard(type, isPaid, locations) {
+      const meta = ALERT_TYPE_META[type];
+      if (!isPaid) {
+        return '<div class="card"><h2>' + meta.icon + ' ' + meta.title + '</h2>'
+          + '<p class="account-note">' + meta.description + ' Available on the paid plan.</p></div>';
+      }
+      if (!locations.length) {
+        return '<div class="card"><h2>' + meta.icon + ' ' + meta.title + '</h2>'
+          + '<p class="account-note">Add a saved location above first, then set this up here.</p></div>';
       }
 
-      return profileCard + passwordCard + (mfaCardHtml || '') + locationsCard + digestCard;
+      const prefsForType = alertPreferences.filter((p) => p.alertType === type);
+      const rows = prefsForType.map((p) => {
+        const hourLabel = meta.needsHour && p.config && typeof p.config.sendHour === 'number'
+          ? ' at ' + formatHour(p.config.sendHour) : '';
+        return '<div class="location-row">'
+          + '<div><div class="location-row-label">' + p.locationLabel + hourLabel + '</div></div>'
+          + '<button class="btn-secondary" style="margin-right:6px;" onclick="toggleAlertPref(\'' + p.id + '\', ' + (!p.active) + ')">' + (p.active ? 'Turn off' : 'Turn on') + '</button>'
+          + '<button class="location-row-remove" onclick="removeAlertPref(\'' + p.id + '\')">Remove</button>'
+          + '</div>';
+      }).join('');
+
+      // Only offer locations that don't already have this alert type — the
+      // backend enforces one-per-(location, type) too (409 on a duplicate),
+      // this is just so the dropdown never offers a choice that would fail.
+      const usedLocationIds = new Set(prefsForType.map((p) => p.locationId));
+      const availableLocations = locations.filter((loc) => !usedLocationIds.has(loc.id));
+
+      let addForm;
+      if (!availableLocations.length) {
+        addForm = '<p class="account-note">Every saved location already has this alert set up.</p>';
+      } else {
+        const locationOptions = availableLocations.map((loc) => '<option value="' + loc.id + '">' + loc.label + '</option>').join('');
+        const hourField = meta.needsHour
+          ? '<div class="account-field"><label>Send at</label><select id="newAlertHour-' + type + '">'
+            + Array.from({ length: 24 }, (_, h) => '<option value="' + h + '">' + formatHour(h) + '</option>').join('')
+            + '</select></div>'
+          : '';
+        addForm = '<div class="account-field"><label>Location</label><select id="newAlertLocation-' + type + '">' + locationOptions + '</select></div>'
+          + hourField
+          + '<button class="btn-primary" onclick="addAlertPref(\'' + type + '\')">Add</button>';
+      }
+
+      return '<div class="card"><h2>' + meta.icon + ' ' + meta.title + '</h2>'
+        + '<p class="account-note">' + meta.description + '</p>'
+        + rows
+        + addForm
+        + '<div id="alertStatusMsg-' + type + '"></div>'
+        + '</div>';
+    }
+
+    async function addAlertPref(type) {
+      const locationSelect = document.getElementById('newAlertLocation-' + type);
+      const status = document.getElementById('alertStatusMsg-' + type);
+      if (!locationSelect || !locationSelect.value) { if (status) status.innerHTML = '<p class="account-error">Choose a location</p>'; return; }
+      const config = {};
+      if (ALERT_TYPE_META[type].needsHour) {
+        const hourSelect = document.getElementById('newAlertHour-' + type);
+        config.sendHour = parseInt(hourSelect.value, 10);
+      }
+      status.innerHTML = '<p class="account-note">Saving…</p>';
+      try {
+        await authedFetch('/api/alerts', {
+          method: 'POST',
+          body: JSON.stringify({ alertType: type, locationId: locationSelect.value, config }),
+        });
+        renderAccountPanel();
+      } catch (err) {
+        status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
+    }
+
+    async function toggleAlertPref(id, active) {
+      try {
+        await authedFetch('/api/alerts/' + id, { method: 'PUT', body: JSON.stringify({ active }) });
+        renderAccountPanel();
+      } catch (err) {
+        showAccountError(err.message);
+      }
+    }
+
+    async function removeAlertPref(id) {
+      try {
+        await authedFetch('/api/alerts/' + id, { method: 'DELETE' });
+        renderAccountPanel();
+      } catch (err) {
+        showAccountError(err.message);
+      }
     }
 
     async function setAccountPassword() {
@@ -2455,13 +2551,13 @@
     // a native confirm() on top of that as a last-chance guard rail before
     // the request is actually sent. See DELETE /api/account/me for what
     // this removes: consumer profile, business listing (if any), saved
-    // locations, digest settings, any active Stripe subscription — the
-    // lot, including the sign-in itself, cancelled and gone, not just
+    // locations, every alert preference, any active Stripe subscription —
+    // the lot, including the sign-in itself, cancelled and gone, not just
     // "hidden".
     function renderDangerZoneCard() {
       return '<div class="card" style="border-color:#f2c6c2;">'
         + '<h2 style="color:#a3271b;">⚠️ Delete account</h2>'
-        + '<p class="account-note">Permanently deletes your account, any business listing, saved locations and digest settings, and cancels any active subscription. This can’t be undone.</p>'
+        + '<p class="account-note">Permanently deletes your account, any business listing, saved locations and alert settings, and cancels any active subscription. This can’t be undone.</p>'
         + '<div class="account-field"><label>Type DELETE to confirm</label>'
         + '<input type="text" id="deleteAccountConfirm" placeholder="DELETE" autocomplete="off" /></div>'
         + '<button class="btn-danger" onclick="deleteAccount()">Delete my account</button>'
@@ -2930,22 +3026,6 @@
         renderAccountPanel();
       } catch (err) {
         showAccountError(err.message);
-      }
-    }
-
-    async function saveDigest(active) {
-      const locationId = document.getElementById('digestLocation').value;
-      const sendHour = parseInt(document.getElementById('digestHour').value, 10);
-      const status = document.getElementById('digestStatusMsg');
-      status.innerHTML = '<p class="account-note">Saving…</p>';
-      try {
-        await authedFetch('/api/account/morning-digest', {
-          method: 'PUT',
-          body: JSON.stringify({ locationId, sendHour, active }),
-        });
-        renderAccountPanel();
-      } catch (err) {
-        status.innerHTML = '<p class="account-error">' + err.message + '</p>';
       }
     }
 

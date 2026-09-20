@@ -12,7 +12,12 @@ async function getWeather(lat = DEFAULT_LAT, lon = DEFAULT_LON) {
   const url = new URL('https://api.open-meteo.com/v1/forecast');
   url.searchParams.set('latitude', lat);
   url.searchParams.set('longitude', lon);
-  url.searchParams.set('current', 'temperature_2m,apparent_temperature,weather_code,wind_speed_10m,precipitation,is_day');
+  // wind_gusts_10m added for the alert engine's high-wind check
+  // (jobs/alertEngine.js) — UK wind warnings are gust-based, not sustained-
+  // speed-based, and wind_speed_10m alone understates genuinely disruptive
+  // gusty conditions. Purely additive: every existing field/consumer of
+  // this function (the dashboard, the morning digest) is untouched.
+  url.searchParams.set('current', 'temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_gusts_10m,precipitation,is_day');
   url.searchParams.set('daily', 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code,uv_index_max');
   url.searchParams.set('timezone', 'Europe/London');
   url.searchParams.set('forecast_days', '4');
@@ -31,6 +36,7 @@ async function getWeather(lat = DEFAULT_LAT, lon = DEFAULT_LON) {
       tempC: data.current.temperature_2m,
       feelsLikeC: data.current.apparent_temperature,
       windKph: data.current.wind_speed_10m,
+      windGustsKph: data.current.wind_gusts_10m,
       precipitationMm: data.current.precipitation,
       isDay: !!data.current.is_day,
       condition: describeWeatherCode(data.current.weather_code),
