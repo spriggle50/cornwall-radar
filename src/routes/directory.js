@@ -31,6 +31,27 @@ router.get('/categories', (req, res) => {
   res.json({ categories: BUSINESS_CATEGORIES });
 });
 
+// Shared by GET / (bulk, all listed businesses) and GET /:businessId/reviews
+// (one business) — turns raw {business_id, rating} rows into a per-business
+// {avgRating, reviewCount}. Done here in JS rather than a SQL GROUP BY/AVG
+// since supabase-js's query builder has no aggregate support without an RPC
+// or a database view, and this project has avoided both so far in favour of
+// keeping logic in one place (see lib/supabaseClient.js's module comment).
+function aggregateRatings(rows) {
+  const byBusiness = {};
+  for (const row of rows) {
+    if (!byBusiness[row.business_id]) byBusiness[row.business_id] = { sum: 0, count: 0 };
+    byBusiness[row.business_id].sum += row.rating;
+    byBusiness[row.business_id].count += 1;
+  }
+  const result = {};
+  for (const businessId of Object.keys(byBusiness)) {
+    const { sum, count } = byBusiness[businessId];
+    result[businessId] = { avgRating: Math.round((sum / count) * 10) / 10, reviewCount: count };
+  }
+  return result;
+}
+
 router.get('/', async (req, res) => {
   if (!supabaseConfigured()) {
     return res.json({ configured: false, message: 'Accounts/directory not configured on this server yet.', businesses: [] });
@@ -73,12 +94,20 @@ router.get('/', async (req, res) => {
     const { data, error } = await query;
     if (error) throw new Error(error.message);
 
+    const businessIds = (data || []).map((b) => b.id);
+    const { data: ratingRows } = businessIds.length
+      ? await supabaseAdmin.from('business_reviews').select('business_id, rating').in('business_id', businessIds)
+      : { data: [] };
+    const ratings = aggregateRatings(ratingRows || []);
+
     const userLat = lat != null ? parseFloat(lat) : null;
     const userLon = lon != null ? parseFloat(lon) : null;
 
     const businesses = (data || []).map(({ subscription_status, ...b }) => ({
       ...b,
       featured: subscription_status === 'active',
+      avgRating: (ratings[b.id] && ratings[b.id].avgRating) || null,
+      reviewCount: (ratings[b.id] && ratings[b.id].reviewCount) || 0,
       distanceKm: (userLat != null && userLon != null && b.lat != null && b.lng != null)
         ? Math.round(distanceKm(userLat, userLon, b.lat, b.lng) * 10) / 10
         : null,
@@ -144,6 +173,36 @@ router.get('/sponsored', async (req, res) => {
   } catch (err) {
     console.error('[directory] sponsored failed:', err.message);
     res.status(500).json({ error: 'Sponsored businesses temporarily unavailable' });
+  }
+});
+
+// GET /api/directory/:businessId/reviews — public list of reviews on one
+// business, newest first, plus the average rating. Deliberately excludes
+// consumer_id/email — sign-in is required to WRITE a review (see
+// routes/reviews.js) to cut down on spam, but that's not the same as
+// making reviewers publicly identifiable; nothing here says who wrote what.
+router.get('/:businessId/reviews', async (req, res) => {
+  if (!supabaseConfigured()) {
+    return res.json({ configured: false, reviews: [] });
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('business_reviews')
+      .select('id, rating, comment, reply, replied_at, created_at')
+      .eq('business_id', req.params.businessId)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+
+    const reviews = data || [];
+    const avgRating = reviews.length
+      ? Math.round((reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length) * 10) / 10
+      : null;
+
+    res.json({ configured: true, reviews, avgRating, reviewCount: reviews.length });
+  } catch (err) {
+    console.error('[directory] reviews failed:', err.message);
+    res.status(500).json({ error: 'Reviews temporarily unavailable' });
   }
 });
 

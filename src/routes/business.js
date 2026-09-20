@@ -357,4 +357,94 @@ router.post('/create-portal-session', requireBusinessStripeConfigured, async (re
   }
 });
 
+// GET /api/business/reviews — the caller's OWN business's reviews, for
+// managing replies. Same review data shape as the public endpoint in
+// routes/directory.js — reviewer identity still isn't exposed, even to the
+// business being reviewed; sign-in-to-review guards against spam, not
+// anonymity.
+router.get('/reviews', async (req, res) => {
+  try {
+    const { data: business } = await supabaseAdmin
+      .from('businesses')
+      .select('id')
+      .eq('id', req.user.id)
+      .maybeSingle();
+    if (!business) return res.json({ reviews: [] });
+
+    const { data, error } = await supabaseAdmin
+      .from('business_reviews')
+      .select('id, rating, comment, reply, replied_at, created_at')
+      .eq('business_id', business.id)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+
+    res.json({ reviews: data || [] });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Could not load your reviews' });
+  }
+});
+
+// PUT /api/business/reviews/:reviewId/reply — reply to a review on the
+// caller's OWN business. Ownership is checked by comparing the review's
+// business_id against req.user.id (a business row's id IS its owner's auth
+// user id in this schema — see schema.sql), not just trusting the reviewId
+// in the URL — otherwise any signed-in business owner could reply to any
+// OTHER business's reviews just by guessing/enumerating review ids.
+router.put('/reviews/:reviewId/reply', async (req, res) => {
+  const { reply } = req.body || {};
+  if (!reply || !reply.trim()) {
+    return res.status(400).json({ error: 'Enter a reply' });
+  }
+  try {
+    const { data: review } = await supabaseAdmin
+      .from('business_reviews')
+      .select('id, business_id')
+      .eq('id', req.params.reviewId)
+      .maybeSingle();
+    if (!review) return res.status(404).json({ error: 'Review not found' });
+    if (review.business_id !== req.user.id) {
+      return res.status(403).json({ error: 'You can only reply to reviews on your own listing' });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('business_reviews')
+      .update({ reply: reply.trim(), replied_at: new Date().toISOString() })
+      .eq('id', req.params.reviewId)
+      .select('id, rating, comment, reply, replied_at, created_at')
+      .single();
+    if (error) throw new Error(error.message);
+
+    res.json(data);
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Could not save your reply' });
+  }
+});
+
+// DELETE /api/business/reviews/:reviewId/reply — remove your reply. The
+// review itself stays — removing the whole review is the reviewer's call
+// (see routes/reviews.js), not the business's.
+router.delete('/reviews/:reviewId/reply', async (req, res) => {
+  try {
+    const { data: review } = await supabaseAdmin
+      .from('business_reviews')
+      .select('id, business_id')
+      .eq('id', req.params.reviewId)
+      .maybeSingle();
+    if (!review) return res.status(404).json({ error: 'Review not found' });
+    if (review.business_id !== req.user.id) {
+      return res.status(403).json({ error: 'You can only manage replies on your own listing' });
+    }
+
+    const { error } = await supabaseAdmin
+      .from('business_reviews')
+      .update({ reply: null, replied_at: null })
+      .eq('id', req.params.reviewId);
+    if (error) throw new Error(error.message);
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Could not remove your reply' });
+  }
+});
+
 module.exports = router;

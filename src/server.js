@@ -8,6 +8,7 @@ const accountRoute = require('./routes/account');
 const billing = require('./routes/billing');
 const businessRoute = require('./routes/business');
 const directoryRoute = require('./routes/directory');
+const reviewsRoute = require('./routes/reviews');
 const { geocodeLocation } = require('./fetchers/geocode');
 const { runMorningDigest } = require('./jobs/morningDigest');
 
@@ -43,6 +44,7 @@ app.use('/api/billing', billing.router);
 // endpoint everyone (including logged-out visitors) hits to see listings.
 app.use('/api/business', businessRoute);
 app.use('/api/directory', directoryRoute);
+app.use('/api/reviews', reviewsRoute);
 
 // GET /api/public-config — the handful of values the frontend needs to talk
 // to Supabase directly (its anon key is designed to be shared with the

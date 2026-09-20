@@ -454,6 +454,29 @@
       letter-spacing: 0.04em; padding: 3px 9px; border-radius: 999px; background: #fff2cc; color: #9a6b00;
       white-space: nowrap; flex-shrink: 0;
     }
+    .review-toggle-link { text-decoration: none; font-weight: 600; }
+    .review-toggle-link:hover { text-decoration: underline; }
+
+    /* Reviews — both the expandable per-directory-row panel and the
+       business owner's "reviews on your listing" card share these classes. */
+    .reviews-panel { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
+    .review-row { padding: 10px 0; border-top: 1px solid var(--border); }
+    .review-row:first-child { border-top: none; }
+    .review-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .review-row-stars { color: #9a6b00; font-size: 0.9rem; }
+    .review-row-date { font-size: 0.75rem; color: var(--text-3); }
+    .review-row-comment { font-size: 0.85rem; color: var(--text-2); margin: 4px 0 0; line-height: 1.45; }
+    .review-row-reply {
+      font-size: 0.82rem; color: var(--text-2); margin-top: 6px; padding: 8px 10px;
+      background: var(--surface-2, #f4f6f5); border-radius: var(--radius-sm);
+    }
+    .review-form { margin-top: 8px; }
+    .review-form label { display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-2); margin-bottom: 4px; }
+    .review-form select, .review-form textarea {
+      width: 100%; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+      font-size: 0.88rem; font-family: inherit; color: var(--text); background: #fff; box-sizing: border-box;
+      margin-bottom: 8px; resize: vertical;
+    }
 
     /* Main-dashboard "Sponsored" strip — a handful of rotating Featured
        businesses, separate from (and higher-visibility than) the full
@@ -1782,6 +1805,109 @@
       renderDirectoryDetail();
     }
 
+    // Reviews are shown inline, one directory row at a time (expanding a
+    // second closes the first — expandedReviewsFor holds at most one id) —
+    // simpler than a separate per-business detail page, and consistent with
+    // how this directory already re-renders the whole list on every filter
+    // change rather than patching individual rows.
+    async function toggleReviews(businessId) {
+      if (expandedReviewsFor === businessId) {
+        expandedReviewsFor = null;
+        renderDirectoryDetail();
+        return;
+      }
+      expandedReviewsFor = businessId;
+      await loadReviewsFor(businessId);
+      renderDirectoryDetail();
+    }
+
+    // Public reviews + average (routes/directory.js) are fetched regardless
+    // of sign-in; "my review" (routes/reviews.js, requires auth) is only
+    // fetched when someone's actually signed in, so a logged-out visitor can
+    // still read reviews and just doesn't see the leave-a-review form.
+    async function loadReviewsFor(businessId, force) {
+      if (reviewsCache[businessId] && !force) return;
+      let reviews = [], avgRating = null, reviewCount = 0, myReview = null, isSignedIn = false;
+      try {
+        const res = await fetch('/api/directory/' + businessId + '/reviews');
+        const data = await res.json();
+        reviews = (data && data.reviews) || [];
+        avgRating = data && data.avgRating;
+        reviewCount = (data && data.reviewCount) || 0;
+      } catch (e) {}
+      if (sb) {
+        try {
+          const { data: { session } } = await sb.auth.getSession();
+          if (session) {
+            isSignedIn = true;
+            const mine = await authedFetch('/api/reviews/' + businessId + '/mine');
+            myReview = mine && mine.review;
+          }
+        } catch (e) {}
+      }
+      reviewsCache[businessId] = { reviews, avgRating, reviewCount, myReview, isSignedIn };
+    }
+
+    function renderReviewsPanel(businessId) {
+      const cache = reviewsCache[businessId];
+      if (!cache) return '<p class="account-note">Loading reviews…</p>';
+      const { reviews, myReview } = cache;
+      const reviewRows = reviews.length
+        ? reviews.map((r) => {
+            const stars = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
+            const date = new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+            return '<div class="review-row">'
+              + '<div class="review-row-top"><span class="review-row-stars">' + stars + '</span><span class="review-row-date">' + date + '</span></div>'
+              + (r.comment ? '<p class="review-row-comment">' + r.comment + '</p>' : '')
+              + (r.reply ? '<div class="review-row-reply"><strong>Business reply:</strong> ' + r.reply + '</div>' : '')
+              + '</div>';
+          }).join('')
+        : '<p class="account-note">No reviews yet — be the first!</p>';
+      const myForm = !cache.isSignedIn
+        ? '<p class="account-note">Sign in to leave a review.</p>'
+        : (
+          '<div class="review-form">'
+          + '<label>' + (myReview ? 'Update your review' : 'Leave a review') + '</label>'
+          + '<select id="reviewRating-' + businessId + '">'
+          + [5, 4, 3, 2, 1].map((n) => '<option value="' + n + '"'
+            + (myReview ? (myReview.rating === n ? ' selected' : '') : (n === 5 ? ' selected' : ''))
+            + '>' + '★'.repeat(n) + '☆'.repeat(5 - n) + '</option>').join('')
+          + '</select>'
+          + '<textarea id="reviewComment-' + businessId + '" placeholder="Optional comment" rows="2">' + (myReview && myReview.comment ? myReview.comment : '') + '</textarea>'
+          + '<button class="btn-primary" onclick="submitReview(\'' + businessId + '\')">' + (myReview ? 'Update review' : 'Submit review') + '</button>'
+          + (myReview ? ' <button class="btn-secondary" onclick="removeMyReview(\'' + businessId + '\')" style="margin-left:8px;">Remove</button>' : '')
+          + '<div id="reviewStatusMsg-' + businessId + '"></div>'
+          + '</div>'
+        );
+      return '<div class="reviews-panel">' + reviewRows + myForm + '</div>';
+    }
+
+    async function submitReview(businessId) {
+      const rating = parseInt(document.getElementById('reviewRating-' + businessId).value, 10);
+      const comment = document.getElementById('reviewComment-' + businessId).value.trim();
+      const status = document.getElementById('reviewStatusMsg-' + businessId);
+      status.innerHTML = '<p class="account-note">Saving…</p>';
+      try {
+        await authedFetch('/api/reviews/' + businessId, { method: 'PUT', body: JSON.stringify({ rating, comment }) });
+        await loadReviewsFor(businessId, true);
+        renderDirectoryDetail();
+      } catch (err) {
+        status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
+    }
+
+    async function removeMyReview(businessId) {
+      if (!confirm('Remove your review?')) return;
+      try {
+        await authedFetch('/api/reviews/' + businessId, { method: 'DELETE' });
+        await loadReviewsFor(businessId, true);
+        renderDirectoryDetail();
+      } catch (err) {
+        const status = document.getElementById('reviewStatusMsg-' + businessId);
+        if (status) status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
+    }
+
     function renderDirectoryCard(data, categories) {
       const categoryOptions = '<option value="">All categories</option>'
         + (categories || []).map((c) => '<option value="' + c.replace(/"/g, '&quot;') + '"'
@@ -1808,6 +1934,15 @@
           const distLine = b.distanceKm != null ? b.distanceKm + 'km away' : null;
           const meta = [distLine, phoneLine, siteLine].filter(Boolean).join(' · ');
           const logo = b.logo_url ? '<img src="' + b.logo_url + '" alt="" class="directory-row-logo" />' : '';
+          // Rating line is always a link — even with zero reviews yet — so
+          // "be the first to review" is one click away right from the list,
+          // rather than only reachable once someone else has already left one.
+          const ratingText = b.reviewCount
+            ? '★ ' + b.avgRating + ' (' + b.reviewCount + (b.reviewCount === 1 ? ' review' : ' reviews') + ')'
+            : 'No reviews yet';
+          const isExpanded = expandedReviewsFor === b.id;
+          const ratingLine = '<p class="directory-row-meta"><a href="#" class="review-toggle-link" onclick="event.preventDefault(); toggleReviews(\'' + b.id + '\');">'
+            + ratingText + (isExpanded ? ' · Hide' : ' · Show') + '</a></p>';
           return '<div class="directory-row">'
             + '<div class="directory-row-top">'
             + '<div style="display:flex; align-items:center; gap:10px;">' + logo
@@ -1817,6 +1952,8 @@
             + '</div>'
             + (b.description ? '<p class="directory-row-desc">' + b.description + '</p>' : '')
             + (meta ? '<p class="directory-row-meta">' + meta + '</p>' : '')
+            + ratingLine
+            + (isExpanded ? renderReviewsPanel(b.id) : '')
             + '</div>';
         }).join('');
       }
@@ -1846,6 +1983,9 @@
     let businessData = null;     // last-fetched /api/business/me payload's `business` (or null)
     let businessCategories = []; // last-fetched fixed category list, for the listing form's dropdown
     let passwordRecoveryMode = false; // true after arriving via a "reset your password" email link, until a new password is saved
+    let businessReviews = [];    // last-fetched /api/business/reviews payload, for the account panel's "your listing" reply UI
+    let expandedReviewsFor = null; // businessId of the one directory row currently showing its reviews panel, or null
+    let reviewsCache = {};       // businessId -> { reviews, avgRating, reviewCount, myReview, isSignedIn }, filled by loadReviewsFor
 
     async function initAccount() {
       try {
@@ -1991,17 +2131,19 @@
         // failing call doesn't hold up the others. Business/MFA are both
         // genuinely optional (most consumers use neither), so their own
         // failure degrades to "none" rather than blocking the whole panel.
-        const [account, businessResp, categories, factorsResp] = await Promise.all([
+        const [account, businessResp, categories, factorsResp, reviewsResp] = await Promise.all([
           authedFetch('/api/account/me'),
           authedFetch('/api/business/me').catch(() => ({ business: null })),
           getBusinessCategories(),
           sb.auth.mfa.listFactors().catch(() => ({ data: { totp: [] } })),
+          authedFetch('/api/business/reviews').catch(() => ({ reviews: [] })),
         ]);
         accountData = account;
         businessData = businessResp.business;
         businessCategories = categories;
+        businessReviews = reviewsResp.reviews || [];
         const mfaFactors = (factorsResp && factorsResp.data && factorsResp.data.totp) || [];
-        panel.innerHTML = backBtn + msgSlot + renderAccountCards(accountData, renderMfaCard(mfaFactors)) + renderBusinessCards(businessData) + renderDangerZoneCard();
+        panel.innerHTML = backBtn + msgSlot + renderAccountCards(accountData, renderMfaCard(mfaFactors)) + renderBusinessCards(businessData, businessReviews) + renderDangerZoneCard();
       } catch (err) {
         panel.innerHTML = backBtn + msgSlot + '<div class="card"><p class="account-error">' + err.message + '</p></div>';
       }
@@ -2476,7 +2618,7 @@
     // ── Business directory: manage YOUR OWN listing (see routes/business.js).
     // Same signed-in session as the rest of this panel — a person can be a
     // consumer, a business, or both, with one login.
-    function renderBusinessCards(business) {
+    function renderBusinessCards(business, reviews) {
       const badgeClass = business ? (business.subscription_status || 'free') : 'free';
       const badgeLabel = business && business.subscription_status === 'active' ? 'Featured'
         : business && business.subscription_status === 'past_due' ? 'Past due'
@@ -2526,7 +2668,96 @@
         + '<button class="' + (business ? 'btn-secondary' : 'btn-primary') + '" onclick="saveBusinessListing()">' + (business ? 'Save changes' : 'Create listing') + '</button>'
         + (business ? ' ' + billingBtn + removeBtn : '')
         + '<div id="businessStatusMsg"></div>'
+        + '</div>'
+        + (business ? renderOwnerReviewsCard(reviews || []) : '');
+    }
+
+    // Reviews on the signed-in business's own listing — read-only for the
+    // review/rating itself (only the reviewer can change that, via
+    // routes/reviews.js), but the reply is the owner's to write, edit or
+    // remove (routes/business.js). Reviewer identity is never shown here
+    // either, same as the public directory view — sign-in-to-review is meant
+    // to curb spam, not to make people's identities visible to businesses.
+    let ownerReviewsById = {}; // reviewId -> raw review row, refreshed on every render — lets editReviewReply prefill from data instead of re-parsing rendered HTML
+    function renderOwnerReviewsCard(reviews) {
+      ownerReviewsById = {};
+      reviews.forEach((r) => { ownerReviewsById[r.id] = r; });
+      if (!reviews.length) {
+        return '<div class="card"><h2>💬 Reviews on your listing</h2>'
+          + '<p class="account-note">No reviews yet.</p></div>';
+      }
+      const rows = reviews.map((r) => {
+        const stars = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
+        const date = new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        const replyBlock = r.reply
+          ? '<div class="review-row-reply"><strong>Your reply:</strong> ' + r.reply + '</div>'
+            + '<button class="btn-secondary" onclick="editReviewReply(\'' + r.id + '\')" style="margin-top:6px;">Edit reply</button>'
+            + ' <button class="btn-secondary" onclick="removeReviewReply(\'' + r.id + '\')" style="margin-left:8px; margin-top:6px;">Remove reply</button>'
+          : '<div class="review-form" id="reviewReplyForm-' + r.id + '" hidden>'
+            + '<textarea id="reviewReplyText-' + r.id + '" placeholder="Write a public reply…" rows="2"></textarea>'
+            + '<button class="btn-primary" onclick="saveReviewReply(\'' + r.id + '\')">Post reply</button>'
+            + '</div>'
+            + '<button class="btn-secondary" id="reviewReplyToggle-' + r.id + '" onclick="showReviewReplyForm(\'' + r.id + '\')" style="margin-top:6px;">Reply</button>';
+        return '<div class="review-row">'
+          + '<div class="review-row-top"><span class="review-row-stars">' + stars + '</span><span class="review-row-date">' + date + '</span></div>'
+          + (r.comment ? '<p class="review-row-comment">' + r.comment + '</p>' : '')
+          + replyBlock
+          + '<div id="reviewReplyStatus-' + r.id + '"></div>'
+          + '</div>';
+      }).join('');
+      return '<div class="card"><h2>💬 Reviews on your listing</h2>' + rows + '</div>';
+    }
+
+    function showReviewReplyForm(reviewId) {
+      const form = document.getElementById('reviewReplyForm-' + reviewId);
+      const toggle = document.getElementById('reviewReplyToggle-' + reviewId);
+      if (form) form.hidden = false;
+      if (toggle) toggle.hidden = true;
+    }
+
+    async function saveReviewReply(reviewId) {
+      const reply = document.getElementById('reviewReplyText-' + reviewId).value.trim();
+      const status = document.getElementById('reviewReplyStatus-' + reviewId);
+      if (!reply) { status.innerHTML = '<p class="account-error">Write a reply first</p>'; return; }
+      status.innerHTML = '<p class="account-note">Posting…</p>';
+      try {
+        await authedFetch('/api/business/reviews/' + reviewId + '/reply', { method: 'PUT', body: JSON.stringify({ reply }) });
+        renderAccountPanel();
+      } catch (err) {
+        status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
+    }
+
+    // "Edit" just re-opens a reply form pre-filled with the current text
+    // (from ownerReviewsById, filled on the last render — not re-parsed out
+    // of the rendered HTML) and reuses saveReviewReply to overwrite it —
+    // routes/business.js's PUT endpoint replaces the reply rather than
+    // versioning it, so editing and first-writing are the same call.
+    function editReviewReply(reviewId) {
+      const review = ownerReviewsById[reviewId];
+      const current = (review && review.reply) || '';
+      const card = document.getElementById('reviewReplyStatus-' + reviewId).closest('.review-row');
+      const replyDiv = card.querySelector('.review-row-reply');
+      replyDiv.outerHTML =
+        '<div class="review-form" id="reviewReplyForm-' + reviewId + '">'
+        + '<textarea id="reviewReplyText-' + reviewId + '" placeholder="Write a public reply…" rows="2">' + current + '</textarea>'
+        + '<button class="btn-primary" onclick="saveReviewReply(\'' + reviewId + '\')">Save reply</button>'
         + '</div>';
+      const editBtn = card.querySelector('button[onclick^="editReviewReply"]');
+      if (editBtn) editBtn.remove();
+      const removeBtn = card.querySelector('button[onclick^="removeReviewReply"]');
+      if (removeBtn) removeBtn.remove();
+    }
+
+    async function removeReviewReply(reviewId) {
+      if (!confirm('Remove your reply?')) return;
+      const status = document.getElementById('reviewReplyStatus-' + reviewId);
+      try {
+        await authedFetch('/api/business/reviews/' + reviewId + '/reply', { method: 'DELETE' });
+        renderAccountPanel();
+      } catch (err) {
+        if (status) status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
     }
 
     async function saveBusinessListing() {
