@@ -16,10 +16,9 @@
 // Highways traffic, GBIF sightings), not official Met Office severe-weather
 // warnings or an emergency service. Email wording says so explicitly —
 // never phrase these as an official warning.
-const crypto = require('crypto');
 const { supabaseAdmin, isConfigured: supabaseConfigured } = require('../lib/supabaseClient');
 const { sendEmail, isConfigured: emailConfigured } = require('../lib/emailClient');
-const { getTrafficIncidents } = require('../fetchers/traffic');
+const { getRouteTraffic } = require('../fetchers/routing');
 const { getWeather } = require('../fetchers/weather');
 const { getFloodAndRiverLevels } = require('../fetchers/floodMonitoring');
 const { getRecentSightings } = require('../fetchers/wildlife');
@@ -27,10 +26,6 @@ const { distanceKm } = require('../lib/geo');
 
 function londonDateKey(date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(date); // YYYY-MM-DD
-}
-
-function shortHash(input) {
-  return crypto.createHash('md5').update(input).digest('hex').slice(0, 12);
 }
 
 function slugify(s) {
@@ -52,44 +47,44 @@ function wrapEmailHtml(heading, bodyLines) {
 }
 
 // ── Traffic-route alerts ────────────────────────────────────────────────
-// "Route" here means the same thing the rest of this project's traffic
-// fetcher already means — incidents/closures within a radius of a single
-// point (see fetchers/traffic.js) — not a true A-to-B travel-time
-// comparison, which would need a routing API this project doesn't call
-// anywhere yet. Alert-worthy = a TomTom incident with magnitudeOfDelay >= 2
-// (moderate/major) or ANY National Highways closure, within the configured
-// radius (default 8km — tighter than the digest's 15km, since this is
-// "something's wrong near this exact spot", not general context).
-async function checkTrafficRoute(location, config, dateKey) {
-  const radiusMeters = (config && config.radiusMeters) || 8000;
-  const traffic = await getTrafficIncidents({ lat: location.lat, lon: location.lng, radiusMeters });
-  if (!traffic.configured) return null;
+// A genuine A-to-B check now (fetchers/routing.js — TomTom Routing API with
+// traffic=true), not the radius-based "incidents near one point" this used
+// to do (that approximation is still what fetchers/traffic.js and the
+// dashboard/digest use — this is the only place in the project that calls
+// the Routing API instead). Alert-worthy = the route's current
+// trafficDelaySeconds (how much longer it's taking than free-flow right
+// now) is at or above the consumer's chosen threshold.
+//
+// origin/destination are both required — a preference created before this
+// upgrade (radius-only, no destination saved) has nothing to route between,
+// so it's skipped rather than guessing a destination; see
+// routes/alerts.js, which now requires a destination for every new
+// traffic_route preference.
+async function checkTrafficRoute(origin, destination, config, dateKey) {
+  if (!destination) return null;
 
-  const relevant = (traffic.incidents || []).filter((inc) => {
-    if (inc.kind === 'closure') {
-      // National Highways closures aren't bbox-filtered by the fetcher
-      // itself (that feed is already Cornwall-scoped, not per-point) — so
-      // where a closure DOES carry coordinates, distance-check it against
-      // this specific saved location; where it doesn't, fall back to
-      // including it rather than silently dropping a genuine closure.
-      if (!inc.coordinates) return true;
-      const point = inc.geometryType === 'LineString' ? inc.coordinates[0] : inc.coordinates;
-      if (!point || point[1] == null || point[0] == null) return true;
-      return distanceKm(location.lat, location.lng, point[1], point[0]) <= radiusMeters / 1000;
-    }
-    return inc.severity != null && inc.severity >= 2;
-  });
+  const thresholdMinutes = (config && config.delayThresholdMinutes) || 10;
+  const route = await getRouteTraffic(origin, destination);
+  if (!route.configured) return null;
 
-  if (!relevant.length) return null;
+  const delayMinutes = Math.round(route.trafficDelaySeconds / 60);
+  if (delayMinutes < thresholdMinutes) return null;
 
-  const summary = relevant.slice(0, 5).map((i) => `${i.road ? i.road + ': ' : ''}${i.description}`);
-  const dedupeKey = `traffic_route:${dateKey}:${location.id}:${shortHash(summary.join('|'))}`;
+  // Bucketed into 5-minute bands (per calendar day) rather than the exact
+  // minute count — a delay hovering around 14-16 minutes across successive
+  // hourly checks would otherwise dedupe-bust and re-alert every single
+  // run purely from noise. A genuinely worsening delay (crossing into the
+  // next band) still alerts again the same day; a small fluctuation within
+  // the same band doesn't.
+  const band = Math.floor(delayMinutes / 5) * 5;
+  const dedupeKey = `traffic_route:${dateKey}:${origin.id}:${destination.id}:${band}`;
+
+  const travelMinutes = Math.round(route.travelTimeSeconds / 60);
   return {
     dedupeKey,
-    subject: `Traffic alert near ${location.label}`,
-    html: wrapEmailHtml(`🚗 Traffic near ${location.label}`, [
-      `${relevant.length} notable incident${relevant.length === 1 ? '' : 's'} within ${Math.round(radiusMeters / 1000)}km right now:`,
-      ...summary.map((s) => `• ${s}`),
+    subject: `Traffic alert — ${origin.label} to ${destination.label}`,
+    html: wrapEmailHtml(`🚗 ${origin.label} → ${destination.label}`, [
+      `Currently taking about ${travelMinutes} min — that's roughly ${delayMinutes} min longer than normal due to traffic.`,
     ]),
   };
 }
@@ -219,6 +214,24 @@ async function runAlertEngine() {
     return { sent: 0, error: error.message };
   }
 
+  // traffic_route is the one type needing a SECOND location (its
+  // destination, stored as config.destinationLocationId rather than a
+  // second FK column — see routes/alerts.js). Resolved here in one batch
+  // query rather than per-row, then looked up by id in the loop below.
+  const destinationIds = [...new Set(
+    (prefs || [])
+      .filter((p) => p.alert_type === 'traffic_route' && p.config && p.config.destinationLocationId)
+      .map((p) => p.config.destinationLocationId)
+  )];
+  let destinationsById = {};
+  if (destinationIds.length) {
+    const { data: destinations } = await supabaseAdmin
+      .from('saved_locations')
+      .select('id, label, lat, lng')
+      .in('id', destinationIds);
+    destinationsById = Object.fromEntries((destinations || []).map((d) => [d.id, d]));
+  }
+
   let sent = 0;
   let checked = 0;
   const errors = [];
@@ -231,7 +244,14 @@ async function runAlertEngine() {
 
     checked += 1;
     try {
-      const result = await checker(location, pref.config || {}, dateKey);
+      const result = pref.alert_type === 'traffic_route'
+        ? await checkTrafficRoute(
+            location,
+            pref.config && pref.config.destinationLocationId ? destinationsById[pref.config.destinationLocationId] : null,
+            pref.config || {},
+            dateKey,
+          )
+        : await checker(location, pref.config || {}, dateKey);
       if (!result) continue;
 
       // Two shapes: a single dedupeKey (traffic), or perConditionDedupe (an

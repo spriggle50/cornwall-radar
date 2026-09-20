@@ -115,8 +115,13 @@ The one-a-day morning digest (`jobs/morningDigest.js`) has been joined by
 three more alert types, all managed from `routes/alerts.js` and actually
 dispatched by `jobs/alertEngine.js`:
 
-- **Traffic alerts** — a notable TomTom incident (moderate/major) or any
-  National Highways closure within range of a saved location.
+- **Traffic alerts** — a genuine A-to-B route check (e.g. home → work) via
+  the TomTom Routing API (`fetchers/routing.js`), not just a radius of
+  incidents around one point. Alerts when the route's current traffic
+  delay is at or above a threshold you choose (5-60 min). Needs two saved
+  locations to set up. Untested against a live TomTom response from this
+  environment, same caveat as this project's other fetchers — check it
+  works once deployed.
 - **Weather alerts** — Cornwall Radar's own threshold check (high wind
   gusts, heavy rain, extreme heat/cold, or an active EA flood/river
   warning) for a saved location. Explicitly NOT an official Met Office

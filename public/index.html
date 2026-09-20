@@ -2382,27 +2382,30 @@
     // ── Alert preferences — morning digest, traffic, weather, wildlife.
     // All four share one shape (routes/alerts.js): a list of saved-location
     // rows the consumer has turned this alert on for, plus a form to add
-    // another. Only the digest needs an extra "send at" hour field — see
-    // ALERT_TYPE_META.needsHour.
+    // another. Two types need extra fields beyond a single location: the
+    // digest needs a "send at" hour (needsHour), and traffic needs a SECOND
+    // location — a genuine A-to-B route, not just a radius around one spot
+    // (needsRoute) — plus a delay threshold.
     const ALERT_TYPE_ORDER = ['morning_digest', 'traffic_route', 'weather_warning', 'wildlife_nearby'];
     const ALERT_TYPE_META = {
       morning_digest: {
-        icon: '☀️', title: 'Morning digest', needsHour: true,
+        icon: '☀️', title: 'Morning digest', needsHour: true, needsRoute: false,
         description: 'A daily email with weather, tides, traffic and more for a saved spot, sent at a time you choose.',
       },
       traffic_route: {
-        icon: '🚗', title: 'Traffic alerts', needsHour: false,
-        description: 'An email when a notable traffic incident or road closure shows up near a saved spot.',
+        icon: '🚗', title: 'Traffic alerts', needsHour: false, needsRoute: true,
+        description: 'An email when a saved route (e.g. home → work) is currently running notably slower than normal because of traffic.',
       },
       weather_warning: {
-        icon: '⛈️', title: 'Weather alerts', needsHour: false,
+        icon: '⛈️', title: 'Weather alerts', needsHour: false, needsRoute: false,
         description: 'An email when high wind, heavy rain, extreme heat/cold, or an active flood warning is flagged for a saved spot — Cornwall Radar’s own threshold check, not an official Met Office warning.',
       },
       wildlife_nearby: {
-        icon: '🦊', title: 'Wildlife nearby', needsHour: false,
+        icon: '🦊', title: 'Wildlife nearby', needsHour: false, needsRoute: false,
         description: 'An email when a species is recently logged (GBIF) near a saved spot. Not filtered by rarity — just what’s been recorded close by recently.',
       },
     };
+    const DELAY_THRESHOLD_OPTIONS = [5, 10, 15, 20, 30, 45, 60];
 
     function formatHour(h) {
       return (h % 12 === 0 ? 12 : h % 12) + ':00 ' + (h < 12 ? 'am' : 'pm');
@@ -2414,41 +2417,65 @@
         return '<div class="card"><h2>' + meta.icon + ' ' + meta.title + '</h2>'
           + '<p class="account-note">' + meta.description + ' Available on the paid plan.</p></div>';
       }
-      if (!locations.length) {
+      const minLocations = meta.needsRoute ? 2 : 1;
+      if (locations.length < minLocations) {
+        const note = meta.needsRoute
+          ? 'Add at least two saved locations above first (e.g. home and work), then set up a route alert here.'
+          : 'Add a saved location above first, then set this up here.';
         return '<div class="card"><h2>' + meta.icon + ' ' + meta.title + '</h2>'
-          + '<p class="account-note">Add a saved location above first, then set this up here.</p></div>';
+          + '<p class="account-note">' + note + '</p></div>';
       }
 
       const prefsForType = alertPreferences.filter((p) => p.alertType === type);
       const rows = prefsForType.map((p) => {
-        const hourLabel = meta.needsHour && p.config && typeof p.config.sendHour === 'number'
-          ? ' at ' + formatHour(p.config.sendHour) : '';
+        let label = p.locationLabel;
+        if (meta.needsRoute) {
+          label += ' → ' + (p.destinationLabel || 'unknown');
+          const mins = p.config && p.config.delayThresholdMinutes;
+          if (mins) label += ' (alerts at ' + mins + '+ min delay)';
+        } else if (meta.needsHour && p.config && typeof p.config.sendHour === 'number') {
+          label += ' at ' + formatHour(p.config.sendHour);
+        }
         return '<div class="location-row">'
-          + '<div><div class="location-row-label">' + p.locationLabel + hourLabel + '</div></div>'
+          + '<div><div class="location-row-label">' + label + '</div></div>'
           + '<button class="btn-secondary" style="margin-right:6px;" onclick="toggleAlertPref(\'' + p.id + '\', ' + (!p.active) + ')">' + (p.active ? 'Turn off' : 'Turn on') + '</button>'
           + '<button class="location-row-remove" onclick="removeAlertPref(\'' + p.id + '\')">Remove</button>'
           + '</div>';
       }).join('');
 
-      // Only offer locations that don't already have this alert type — the
-      // backend enforces one-per-(location, type) too (409 on a duplicate),
-      // this is just so the dropdown never offers a choice that would fail.
-      const usedLocationIds = new Set(prefsForType.map((p) => p.locationId));
-      const availableLocations = locations.filter((loc) => !usedLocationIds.has(loc.id));
-
       let addForm;
-      if (!availableLocations.length) {
-        addForm = '<p class="account-note">Every saved location already has this alert set up.</p>';
-      } else {
-        const locationOptions = availableLocations.map((loc) => '<option value="' + loc.id + '">' + loc.label + '</option>').join('');
-        const hourField = meta.needsHour
-          ? '<div class="account-field"><label>Send at</label><select id="newAlertHour-' + type + '">'
-            + Array.from({ length: 24 }, (_, h) => '<option value="' + h + '">' + formatHour(h) + '</option>').join('')
-            + '</select></div>'
-          : '';
-        addForm = '<div class="account-field"><label>Location</label><select id="newAlertLocation-' + type + '">' + locationOptions + '</select></div>'
-          + hourField
+      if (meta.needsRoute) {
+        // Both dropdowns offer every saved location (unlike the other
+        // three types below) — home→work and home→gym are both valid,
+        // distinct route alerts sharing the same origin, so filtering by
+        // "already used" doesn't make sense here. The backend still
+        // rejects an exact duplicate origin+destination pair (409).
+        const locationOptions = locations.map((loc) => '<option value="' + loc.id + '">' + loc.label + '</option>').join('');
+        const thresholdOptions = DELAY_THRESHOLD_OPTIONS.map((m) => '<option value="' + m + '"' + (m === 10 ? ' selected' : '') + '>' + m + ' min</option>').join('');
+        addForm = '<div class="account-field"><label>From</label><select id="newAlertLocation-' + type + '">' + locationOptions + '</select></div>'
+          + '<div class="account-field"><label>To</label><select id="newAlertDestination-' + type + '">' + locationOptions + '</select></div>'
+          + '<div class="account-field"><label>Alert when delay is at least</label><select id="newAlertThreshold-' + type + '">' + thresholdOptions + '</select></div>'
           + '<button class="btn-primary" onclick="addAlertPref(\'' + type + '\')">Add</button>';
+      } else {
+        // Only offer locations that don't already have this alert type —
+        // the backend enforces one-per-(location, type) too (409 on a
+        // duplicate), this is just so the dropdown never offers a choice
+        // that would fail.
+        const usedLocationIds = new Set(prefsForType.map((p) => p.locationId));
+        const availableLocations = locations.filter((loc) => !usedLocationIds.has(loc.id));
+        if (!availableLocations.length) {
+          addForm = '<p class="account-note">Every saved location already has this alert set up.</p>';
+        } else {
+          const locationOptions = availableLocations.map((loc) => '<option value="' + loc.id + '">' + loc.label + '</option>').join('');
+          const hourField = meta.needsHour
+            ? '<div class="account-field"><label>Send at</label><select id="newAlertHour-' + type + '">'
+              + Array.from({ length: 24 }, (_, h) => '<option value="' + h + '">' + formatHour(h) + '</option>').join('')
+              + '</select></div>'
+            : '';
+          addForm = '<div class="account-field"><label>Location</label><select id="newAlertLocation-' + type + '">' + locationOptions + '</select></div>'
+            + hourField
+            + '<button class="btn-primary" onclick="addAlertPref(\'' + type + '\')">Add</button>';
+        }
       }
 
       return '<div class="card"><h2>' + meta.icon + ' ' + meta.title + '</h2>'
@@ -2460,14 +2487,25 @@
     }
 
     async function addAlertPref(type) {
+      const meta = ALERT_TYPE_META[type];
       const locationSelect = document.getElementById('newAlertLocation-' + type);
       const status = document.getElementById('alertStatusMsg-' + type);
       if (!locationSelect || !locationSelect.value) { if (status) status.innerHTML = '<p class="account-error">Choose a location</p>'; return; }
+
       const config = {};
-      if (ALERT_TYPE_META[type].needsHour) {
+      if (meta.needsHour) {
         const hourSelect = document.getElementById('newAlertHour-' + type);
         config.sendHour = parseInt(hourSelect.value, 10);
       }
+      if (meta.needsRoute) {
+        const destinationSelect = document.getElementById('newAlertDestination-' + type);
+        const thresholdSelect = document.getElementById('newAlertThreshold-' + type);
+        if (!destinationSelect.value) { status.innerHTML = '<p class="account-error">Choose a destination</p>'; return; }
+        if (destinationSelect.value === locationSelect.value) { status.innerHTML = '<p class="account-error">Origin and destination must be different</p>'; return; }
+        config.destinationLocationId = destinationSelect.value;
+        config.delayThresholdMinutes = parseInt(thresholdSelect.value, 10);
+      }
+
       status.innerHTML = '<p class="account-note">Saving…</p>';
       try {
         await authedFetch('/api/alerts', {

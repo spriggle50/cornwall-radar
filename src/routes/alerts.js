@@ -9,10 +9,12 @@
 // (account.js), which only ever let a consumer have exactly one digest at a
 // time. Same table, same row shape underneath — just genuine multi-row
 // CRUD now, and shared across all four alert types instead of being
-// digest-only. One row per (consumer, location, alert_type): the UI only
-// offers locations that don't already have a preference of that type (see
-// index.html), and this is enforced here too so a crafted request can't
-// create a duplicate either.
+// digest-only. One row per (consumer, location, alert_type) for three of
+// the four types — traffic_route is keyed on (location, destination)
+// together instead, since it needs a second saved location, see the POST
+// handler below. The UI only offers combinations that don't already exist
+// (see index.html), and this is enforced here too so a crafted request
+// can't create a duplicate either.
 const express = require('express');
 const router = express.Router();
 const { supabaseAdmin } = require('../lib/supabaseClient');
@@ -25,7 +27,10 @@ router.use(requireAuth);
 // GET /api/alerts — every alert preference the caller has, across all four
 // types, with the location's label attached (so the frontend doesn't need
 // a second lookup against /api/account/me's locations list just to show a
-// name next to each row).
+// name next to each row). traffic_route rows also get destinationLabel —
+// their destination is a second saved location, stored as
+// config.destinationLocationId rather than a second FK column (see the
+// POST handler below), so it's resolved here with a small extra lookup.
 router.get('/', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
@@ -36,13 +41,30 @@ router.get('/', async (req, res) => {
       .order('created_at', { ascending: true });
     if (error) throw new Error(error.message);
 
-    const preferences = (data || []).map((p) => ({
+    const rows = data || [];
+    const destinationIds = [...new Set(
+      rows.filter((p) => p.alert_type === 'traffic_route' && p.config && p.config.destinationLocationId)
+        .map((p) => p.config.destinationLocationId)
+    )];
+    let destinationLabels = {};
+    if (destinationIds.length) {
+      const { data: destinations } = await supabaseAdmin
+        .from('saved_locations')
+        .select('id, label')
+        .in('id', destinationIds);
+      destinationLabels = Object.fromEntries((destinations || []).map((d) => [d.id, d.label]));
+    }
+
+    const preferences = rows.map((p) => ({
       id: p.id,
       locationId: p.location_id,
       locationLabel: p.saved_locations ? p.saved_locations.label : 'Unknown location',
       alertType: p.alert_type,
       config: p.config || {},
       active: p.active,
+      destinationLabel: p.config && p.config.destinationLocationId
+        ? (destinationLabels[p.config.destinationLocationId] || 'Unknown location')
+        : null,
     }));
     res.json({ preferences });
   } catch (err) {
@@ -71,9 +93,29 @@ router.post('/', async (req, res) => {
     }
     cleanConfig = { sendHour: hour };
   }
-  // traffic_route/weather_warning/wildlife_nearby take no required config
-  // yet (sensible defaults are applied in jobs/alertEngine.js) — left as {}
-  // rather than accepting arbitrary client-supplied config fields.
+  // traffic_route needs a SECOND saved location (its destination) — stored
+  // as config.destinationLocationId rather than a second FK column on
+  // alert_preferences, so no schema change was needed to add this. Ownership
+  // and "different from the origin" are both checked below, same as the
+  // origin location itself.
+  let destinationLocationId = null;
+  if (alertType === 'traffic_route') {
+    destinationLocationId = config && config.destinationLocationId;
+    if (!destinationLocationId) {
+      return res.status(400).json({ error: 'A destination saved location is required for a traffic-route alert' });
+    }
+    if (destinationLocationId === locationId) {
+      return res.status(400).json({ error: 'Origin and destination must be different saved locations' });
+    }
+    const delayThresholdMinutes = config && config.delayThresholdMinutes != null ? Number(config.delayThresholdMinutes) : 10;
+    if (!Number.isInteger(delayThresholdMinutes) || delayThresholdMinutes < 1 || delayThresholdMinutes > 120) {
+      return res.status(400).json({ error: 'Delay threshold must be a whole number of minutes between 1 and 120' });
+    }
+    cleanConfig = { destinationLocationId, delayThresholdMinutes };
+  }
+  // weather_warning/wildlife_nearby take no required config yet (sensible
+  // defaults are applied in jobs/alertEngine.js) — left as {} rather than
+  // accepting arbitrary client-supplied config fields.
 
   try {
     const { data: consumer, error: consErr } = await supabaseAdmin
@@ -86,24 +128,35 @@ router.post('/', async (req, res) => {
       return res.status(402).json({ error: 'Alerts are a paid-tier feature — subscribe first' });
     }
 
-    const { data: loc, error: locErr } = await supabaseAdmin
+    const locationIdsToCheck = destinationLocationId ? [locationId, destinationLocationId] : [locationId];
+    const { data: ownedLocations, error: locErr } = await supabaseAdmin
       .from('saved_locations')
       .select('id')
-      .eq('id', locationId)
-      .eq('consumer_id', req.user.id)
-      .maybeSingle();
+      .in('id', locationIdsToCheck)
+      .eq('consumer_id', req.user.id);
     if (locErr) throw new Error(locErr.message);
-    if (!loc) return res.status(404).json({ error: 'That saved location was not found' });
+    if ((ownedLocations || []).length !== locationIdsToCheck.length) {
+      return res.status(404).json({ error: 'One of those saved locations was not found' });
+    }
 
-    const { data: existing, error: existErr } = await supabaseAdmin
+    // Duplicate check: for traffic_route this is keyed on (location,
+    // destination) together, not just location — home→work and home→gym
+    // are both valid, distinct alerts from the same origin. The other
+    // three types stay one-per-(location, type), checked with a plain
+    // query; traffic_route's destination lives inside the jsonb config, so
+    // it's compared in JS after fetching this consumer's existing
+    // traffic_route rows for that origin, rather than a jsonb query.
+    const { data: existingForLocation, error: existErr } = await supabaseAdmin
       .from('alert_preferences')
-      .select('id')
+      .select('id, config')
       .eq('consumer_id', req.user.id)
       .eq('location_id', locationId)
-      .eq('alert_type', alertType)
-      .maybeSingle();
+      .eq('alert_type', alertType);
     if (existErr) throw new Error(existErr.message);
-    if (existing) return res.status(409).json({ error: 'You already have this alert set up for that location — edit or remove it instead' });
+    const duplicate = alertType === 'traffic_route'
+      ? (existingForLocation || []).some((p) => p.config && p.config.destinationLocationId === destinationLocationId)
+      : (existingForLocation || []).length > 0;
+    if (duplicate) return res.status(409).json({ error: 'You already have this alert set up for that location — edit or remove it instead' });
 
     const { data, error } = await supabaseAdmin
       .from('alert_preferences')
