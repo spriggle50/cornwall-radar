@@ -2216,9 +2216,18 @@
       const verified = (factors || []).filter((f) => f.status === 'verified');
 
       if (mfaEnrollment) {
+        // Supabase's totp.qr_code comes back as a data: URI wrapping RAW,
+        // unescaped SVG markup (see mfa.enroll()'s own docs) — it's built
+        // for React's src={...} (a real attribute value, no HTML parsing
+        // involved), not for dropping into an HTML string like everything
+        // else here. The `"` characters inside that SVG's own attributes
+        // (viewBox="...", etc.) close the img tag's src="..." early if
+        // left unescaped, which is what showed up as raw broken markup on
+        // the page instead of an image.
+        const qrCodeSrc = mfaEnrollment.qrCode.replace(/"/g, '&quot;');
         return '<div class="card"><h2>🔐 Two-factor authentication</h2>'
           + '<p class="account-note">Scan this with an authenticator app (Google Authenticator, Authy, 1Password, etc.), then enter the 6-digit code it shows.</p>'
-          + '<img src="' + mfaEnrollment.qrCode + '" alt="QR code" style="display:block; width:180px; height:180px; margin:10px 0; border:1px solid var(--border); border-radius:var(--radius-sm);" />'
+          + '<img src="' + qrCodeSrc + '" alt="QR code" style="display:block; width:180px; height:180px; margin:10px 0; border:1px solid var(--border); border-radius:var(--radius-sm);" />'
           + '<p class="account-note">Can’t scan it? Enter this key manually instead: <code>' + mfaEnrollment.secret + '</code></p>'
           + '<div class="account-field"><label>Code from your app</label>'
           + '<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" id="mfaEnrollCode" placeholder="123456" /></div>'
