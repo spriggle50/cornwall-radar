@@ -8,6 +8,7 @@ const router = express.Router();
 const { supabaseAdmin } = require('../lib/supabaseClient');
 const { requireAuth } = require('../middleware/requireAuth');
 const { geocodeLocation } = require('../fetchers/geocode');
+const { stripe } = require('../lib/stripeClient');
 
 router.use(requireAuth);
 
@@ -187,6 +188,53 @@ router.put('/morning-digest', async (req, res) => {
     res.json(data);
   } catch (err) {
     res.status(400).json({ error: err.message || 'Could not save your digest preference' });
+  }
+});
+
+// DELETE /api/account/me — permanently deletes the caller's ENTIRE account:
+// consumer profile, business listing (if any), saved locations, digest
+// preferences, and the underlying Supabase Auth user itself, so they can
+// never sign back in with this email again either. Postgres does almost
+// all of the actual work here: every related table's foreign key is
+// `references ... on delete cascade` (see schema.sql), all the way down
+// from auth.users — deleting the auth user alone wipes everything else in
+// one go. Nothing in this route manually deletes rows table by table.
+//
+// The one thing that ISN'T automatic is Stripe: an active subscription
+// keeps billing regardless of what happens in this app's own database, and
+// once the account is gone, nobody — least of all the person who just
+// deleted it — can sign in to Stripe's billing portal to stop it
+// themselves. So any active/past-due subscription, consumer AND/OR
+// business Featured, is looked up and cancelled directly against Stripe
+// (by Stripe customer id, not from locally-cached subscription state) and
+// the whole deletion is aborted if that fails, rather than silently
+// deleting the account while leaving someone still being charged.
+router.delete('/me', async (req, res) => {
+  try {
+    if (stripe) {
+      const [{ data: consumer }, { data: business }] = await Promise.all([
+        supabaseAdmin.from('consumers').select('stripe_customer_id').eq('id', req.user.id).maybeSingle(),
+        supabaseAdmin.from('businesses').select('stripe_customer_id').eq('id', req.user.id).maybeSingle(),
+      ]);
+      const customerIds = [consumer?.stripe_customer_id, business?.stripe_customer_id].filter(Boolean);
+
+      for (const customerId of customerIds) {
+        for (const status of ['active', 'past_due', 'unpaid', 'trialing']) {
+          const subs = await stripe.subscriptions.list({ customer: customerId, status, limit: 10 });
+          for (const sub of subs.data) {
+            await stripe.subscriptions.cancel(sub.id);
+          }
+        }
+      }
+    }
+
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(req.user.id);
+    if (error) throw new Error(error.message);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[account] delete failed:', err.message);
+    res.status(500).json({ error: 'Could not delete your account (' + (err.message || 'unknown error') + ') — nothing was changed, please try again or contact support' });
   }
 });
 

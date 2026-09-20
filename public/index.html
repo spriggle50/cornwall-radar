@@ -409,6 +409,8 @@
     .btn-primary:disabled { background: var(--border); color: var(--text-3); cursor: not-allowed; }
     .btn-secondary { background: var(--accent-soft); color: var(--accent-dark); }
     .btn-secondary:hover { background: #d3f0e2; }
+    .btn-danger, .btn-primary.btn-danger { background: #fbe4e2; color: #a3271b; }
+    .btn-danger:hover, .btn-primary.btn-danger:hover { background: #f6c9c5; }
 
     .location-row {
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -1999,7 +2001,7 @@
         businessData = businessResp.business;
         businessCategories = categories;
         const mfaFactors = (factorsResp && factorsResp.data && factorsResp.data.totp) || [];
-        panel.innerHTML = backBtn + msgSlot + renderAccountCards(accountData, renderMfaCard(mfaFactors)) + renderBusinessCards(businessData);
+        panel.innerHTML = backBtn + msgSlot + renderAccountCards(accountData, renderMfaCard(mfaFactors)) + renderBusinessCards(businessData) + renderDangerZoneCard();
       } catch (err) {
         panel.innerHTML = backBtn + msgSlot + '<div class="card"><p class="account-error">' + err.message + '</p></div>';
       }
@@ -2289,6 +2291,49 @@
       }
       passwordRecoveryMode = false;
       renderAccountPanel();
+    }
+
+    // ── Delete account. The one genuinely irreversible action in this
+    // panel, so it gets its own visually distinct "danger zone" card at the
+    // very bottom, a text-confirmation step rather than a single click, and
+    // a native confirm() on top of that as a last-chance guard rail before
+    // the request is actually sent. See DELETE /api/account/me for what
+    // this removes: consumer profile, business listing (if any), saved
+    // locations, digest settings, any active Stripe subscription — the
+    // lot, including the sign-in itself, cancelled and gone, not just
+    // "hidden".
+    function renderDangerZoneCard() {
+      return '<div class="card" style="border-color:#f2c6c2;">'
+        + '<h2 style="color:#a3271b;">⚠️ Delete account</h2>'
+        + '<p class="account-note">Permanently deletes your account, any business listing, saved locations and digest settings, and cancels any active subscription. This can’t be undone.</p>'
+        + '<div class="account-field"><label>Type DELETE to confirm</label>'
+        + '<input type="text" id="deleteAccountConfirm" placeholder="DELETE" autocomplete="off" /></div>'
+        + '<button class="btn-danger" onclick="deleteAccount()">Delete my account</button>'
+        + '<div id="deleteAccountStatusMsg"></div>'
+        + '</div>';
+    }
+
+    async function deleteAccount() {
+      const confirmText = document.getElementById('deleteAccountConfirm').value.trim();
+      const status = document.getElementById('deleteAccountStatusMsg');
+      if (confirmText !== 'DELETE') {
+        status.innerHTML = '<p class="account-error">Type DELETE (in capitals) into the box first</p>';
+        return;
+      }
+      if (!confirm('This permanently deletes your account and everything in it, and cancels any active subscription. This cannot be undone. Continue?')) {
+        return;
+      }
+      status.innerHTML = '<p class="account-note">Deleting your account…</p>';
+      try {
+        await authedFetch('/api/account/me', { method: 'DELETE' });
+        await sb.auth.signOut();
+        const panel = document.getElementById('accountPanel');
+        const backBtn = '<button class="back-btn" onclick="closeAccountPanel()">← Back</button>';
+        panel.innerHTML = backBtn + '<div class="card"><h2>👋 Account deleted</h2>'
+          + '<p class="account-note">Your Cornwall Radar account has been permanently deleted.</p></div>';
+      } catch (err) {
+        status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
     }
 
     // ── Two-factor authentication (TOTP via an authenticator app). Entirely
