@@ -9,6 +9,7 @@ const billing = require('./routes/billing');
 const businessRoute = require('./routes/business');
 const directoryRoute = require('./routes/directory');
 const reviewsRoute = require('./routes/reviews');
+const adminRoute = require('./routes/admin');
 const { geocodeLocation } = require('./fetchers/geocode');
 const { runMorningDigest } = require('./jobs/morningDigest');
 
@@ -45,6 +46,10 @@ app.use('/api/billing', billing.router);
 app.use('/api/business', businessRoute);
 app.use('/api/directory', directoryRoute);
 app.use('/api/reviews', reviewsRoute);
+// Logged-in admin panel — same moderation as the emailed one-click links
+// above, reachable while signed in instead of needing that specific email
+// (see middleware/requireAdmin.js for how "admin" is identified).
+app.use('/api/admin', adminRoute);
 
 // GET /api/public-config — the handful of values the frontend needs to talk
 // to Supabase directly (its anon key is designed to be shared with the

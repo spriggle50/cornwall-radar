@@ -86,6 +86,7 @@
       margin-bottom: 14px; box-shadow: var(--shadow-sm);
     }
     .card h2 { margin: 0 0 10px; font-size: 1.02rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .card h3 { margin: 0 0 6px; font-size: 0.88rem; font-weight: 700; color: var(--text-2); }
     .card .unavailable { color: var(--text-3); font-size: 0.9rem; }
 
     /* ── Weather hero — the one thing every visitor should see and register
@@ -1986,6 +1987,8 @@
     let businessReviews = [];    // last-fetched /api/business/reviews payload, for the account panel's "your listing" reply UI
     let expandedReviewsFor = null; // businessId of the one directory row currently showing its reviews panel, or null
     let reviewsCache = {};       // businessId -> { reviews, avgRating, reviewCount, myReview, isSignedIn }, filled by loadReviewsFor
+    let adminBusinesses = null;  // last-fetched /api/admin/businesses payload, or null if this account isn't the admin (403) — see renderAdminCard
+    let adminReviews = null;     // last-fetched /api/admin/reviews payload, or null if this account isn't the admin (403) — see renderAdminCard
 
     async function initAccount() {
       try {
@@ -2131,19 +2134,30 @@
         // failing call doesn't hold up the others. Business/MFA are both
         // genuinely optional (most consumers use neither), so their own
         // failure degrades to "none" rather than blocking the whole panel.
-        const [account, businessResp, categories, factorsResp, reviewsResp] = await Promise.all([
+        // Admin-panel data (adminBusinessesResp/adminReviewsResp) is fetched
+        // for EVERY signed-in user, not just Ady — the server-side
+        // requireAdmin check (middleware/requireAdmin.js) is what actually
+        // gates it, rejecting with 403 for anyone else. That 403 is caught
+        // here into `null`, which is how renderAdminCard tells "not an
+        // admin, don't show this card at all" apart from "admin, but
+        // nothing to moderate yet".
+        const [account, businessResp, categories, factorsResp, reviewsResp, adminBusinessesResp, adminReviewsResp] = await Promise.all([
           authedFetch('/api/account/me'),
           authedFetch('/api/business/me').catch(() => ({ business: null })),
           getBusinessCategories(),
           sb.auth.mfa.listFactors().catch(() => ({ data: { totp: [] } })),
           authedFetch('/api/business/reviews').catch(() => ({ reviews: [] })),
+          authedFetch('/api/admin/businesses').catch(() => null),
+          authedFetch('/api/admin/reviews').catch(() => null),
         ]);
         accountData = account;
         businessData = businessResp.business;
         businessCategories = categories;
         businessReviews = reviewsResp.reviews || [];
+        adminBusinesses = adminBusinessesResp ? adminBusinessesResp.businesses : null;
+        adminReviews = adminReviewsResp ? adminReviewsResp.reviews : null;
         const mfaFactors = (factorsResp && factorsResp.data && factorsResp.data.totp) || [];
-        panel.innerHTML = backBtn + msgSlot + renderAccountCards(accountData, renderMfaCard(mfaFactors)) + renderBusinessCards(businessData, businessReviews) + renderDangerZoneCard();
+        panel.innerHTML = backBtn + msgSlot + renderAccountCards(accountData, renderMfaCard(mfaFactors)) + renderBusinessCards(businessData, businessReviews) + renderAdminCard(adminBusinesses, adminReviews) + renderDangerZoneCard();
       } catch (err) {
         panel.innerHTML = backBtn + msgSlot + '<div class="card"><p class="account-error">' + err.message + '</p></div>';
       }
@@ -2754,6 +2768,73 @@
       const status = document.getElementById('reviewReplyStatus-' + reviewId);
       try {
         await authedFetch('/api/business/reviews/' + reviewId + '/reply', { method: 'DELETE' });
+        renderAccountPanel();
+      } catch (err) {
+        if (status) status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
+    }
+
+    // ── Admin panel — a logged-in alternative to the emailed one-click
+    // moderation links (see routes/admin.js), for when Ady can't find or
+    // doesn't have that particular email to hand. adminBusinesses/
+    // adminReviews are null for every account except the actual admin (the
+    // server rejects the fetch with 403 — see renderAccountPanel), so this
+    // whole card simply doesn't render for anyone else.
+    function renderAdminCard(businesses, reviews) {
+      if (businesses === null && reviews === null) return '';
+
+      const businessRows = (businesses || []).length
+        ? businesses.map((b) => {
+            const date = new Date(b.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+            return '<div class="review-row">'
+              + '<div class="review-row-top"><span><strong>' + b.name + '</strong> — ' + b.category + (b.postcode ? ' · ' + b.postcode : '') + '</span><span class="review-row-date">' + date + '</span></div>'
+              + '<p class="review-row-comment">' + b.email + ' · ' + (b.subscription_status || 'free') + '</p>'
+              + '<button class="btn-secondary" onclick="adminRemoveBusiness(\'' + b.id + '\')">Remove listing</button>'
+              + '<div id="adminBizStatus-' + b.id + '"></div>'
+              + '</div>';
+          }).join('')
+        : '<p class="account-note">No listings.</p>';
+
+      const reviewRows = (reviews || []).length
+        ? reviews.map((r) => {
+            const stars = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
+            const date = new Date(r.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+            return '<div class="review-row">'
+              + '<div class="review-row-top"><span><strong>' + r.businessName + '</strong> — <span class="review-row-stars">' + stars + '</span></span><span class="review-row-date">' + date + '</span></div>'
+              + (r.comment ? '<p class="review-row-comment">' + r.comment + '</p>' : '')
+              + (r.reply ? '<div class="review-row-reply"><strong>Business reply:</strong> ' + r.reply + '</div>' : '')
+              + '<p class="review-row-comment">Reviewer: ' + r.reviewerEmail + '</p>'
+              + '<button class="btn-secondary" onclick="adminRemoveReview(\'' + r.id + '\')">Remove review</button>'
+              + '<div id="adminReviewStatus-' + r.id + '"></div>'
+              + '</div>';
+          }).join('')
+        : '<p class="account-note">No reviews.</p>';
+
+      return '<div class="card"><h2>🛠️ Admin</h2>'
+        + '<p class="account-note">Everything the moderation emails let you do, but reachable while signed in — for when an email\'s gone missing.</p>'
+        + '<h3 style="margin-bottom:6px;">All listings (' + (businesses || []).length + ')</h3>'
+        + businessRows
+        + '<h3 style="margin:16px 0 6px;">All reviews (' + (reviews || []).length + ')</h3>'
+        + reviewRows
+        + '</div>';
+    }
+
+    async function adminRemoveBusiness(id) {
+      if (!confirm('Remove this listing from the directory? This can\'t be undone.')) return;
+      const status = document.getElementById('adminBizStatus-' + id);
+      try {
+        await authedFetch('/api/admin/businesses/' + id, { method: 'DELETE' });
+        renderAccountPanel();
+      } catch (err) {
+        if (status) status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
+    }
+
+    async function adminRemoveReview(id) {
+      if (!confirm('Remove this review? This can\'t be undone.')) return;
+      const status = document.getElementById('adminReviewStatus-' + id);
+      try {
+        await authedFetch('/api/admin/reviews/' + id, { method: 'DELETE' });
         renderAccountPanel();
       } catch (err) {
         if (status) status.innerHTML = '<p class="account-error">' + err.message + '</p>';
