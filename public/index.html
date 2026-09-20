@@ -1940,22 +1940,41 @@
         return;
       }
 
+      // MFA step-up gate. An account with a verified authenticator app
+      // (see renderMfaCard below) signs in at aal1 same as anyone else —
+      // Supabase separates "who are you" from "have you also proven it
+      // with your second factor this session". nextLevel !== currentLevel
+      // means a second factor exists and hasn't been satisfied yet, so the
+      // code-entry card is shown instead of the account data itself.
+      // requireAuth.js enforces the same thing server-side, so this isn't
+      // just a UI nicety being relied on for security — it's what makes
+      // the flow feel right, while the backend is what actually matters.
+      // Checked every time the panel opens (not just right after sign-in),
+      // since a browser tab can sit open with an unchallenged session.
+      const { data: aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (aal && aal.nextLevel === 'aal2' && aal.currentLevel !== aal.nextLevel) {
+        panel.innerHTML = backBtn + msgSlot + renderMfaChallengeCard();
+        return;
+      }
+
       panel.innerHTML = backBtn + msgSlot + '<div class="card"><p class="account-note">Loading your account…</p></div>';
       try {
-        // Consumer account and business listing are independent of each
-        // other (see routes/business.js) — fetched together so one slow or
-        // failing call doesn't hold up the other. Business is genuinely
-        // optional (most consumers never create one), so its own failure
-        // degrades to "no listing" rather than blocking the whole panel.
-        const [account, businessResp, categories] = await Promise.all([
+        // Consumer account, business listing and MFA factor status are all
+        // independent of each other — fetched together so one slow or
+        // failing call doesn't hold up the others. Business/MFA are both
+        // genuinely optional (most consumers use neither), so their own
+        // failure degrades to "none" rather than blocking the whole panel.
+        const [account, businessResp, categories, factorsResp] = await Promise.all([
           authedFetch('/api/account/me'),
           authedFetch('/api/business/me').catch(() => ({ business: null })),
           getBusinessCategories(),
+          sb.auth.mfa.listFactors().catch(() => ({ data: { totp: [] } })),
         ]);
         accountData = account;
         businessData = businessResp.business;
         businessCategories = categories;
-        panel.innerHTML = backBtn + msgSlot + renderAccountCards(accountData) + renderBusinessCards(businessData);
+        const mfaFactors = (factorsResp && factorsResp.data && factorsResp.data.totp) || [];
+        panel.innerHTML = backBtn + msgSlot + renderAccountCards(accountData, renderMfaCard(mfaFactors)) + renderBusinessCards(businessData);
       } catch (err) {
         panel.innerHTML = backBtn + msgSlot + '<div class="card"><p class="account-error">' + err.message + '</p></div>';
       }
@@ -2086,10 +2105,14 @@
 
     async function signOut() {
       await sb.auth.signOut();
+      // A half-finished enrollment (QR shown, code not yet entered) is
+      // per-session UI state, not something that should survive into the
+      // next person who signs in on this same browser/tab.
+      mfaEnrollment = null;
       renderAccountPanel();
     }
 
-    function renderAccountCards(a) {
+    function renderAccountCards(a, mfaCardHtml) {
       const badgeClass = a.subscriptionStatus || 'free';
       const badgeLabel = a.isPaid ? 'Paid'
         : a.subscriptionStatus === 'past_due' ? 'Past due'
@@ -2162,7 +2185,7 @@
           + '</div>';
       }
 
-      return profileCard + passwordCard + locationsCard + digestCard;
+      return profileCard + passwordCard + (mfaCardHtml || '') + locationsCard + digestCard;
     }
 
     async function setAccountPassword() {
@@ -2180,6 +2203,134 @@
       }
       status.innerHTML = '<p class="account-success">Password saved — you can now sign in with your email and this password instead of a magic link.</p>';
       document.getElementById('newPassword').value = '';
+    }
+
+    // ── Two-factor authentication (TOTP via an authenticator app). Entirely
+    // Supabase's own MFA support (enroll/challenge/verify/unenroll) — no
+    // custom backend route needed for any of it, same as password sign-in.
+    // requireAuth.js is what actually enforces the "must be aal2" rule on
+    // every API call; everything here is just the UI for setting it up.
+    let mfaEnrollment = null; // { factorId, qrCode, secret } while a fresh enrollment awaits its confirm code
+
+    function renderMfaCard(factors) {
+      const verified = (factors || []).filter((f) => f.status === 'verified');
+
+      if (mfaEnrollment) {
+        return '<div class="card"><h2>🔐 Two-factor authentication</h2>'
+          + '<p class="account-note">Scan this with an authenticator app (Google Authenticator, Authy, 1Password, etc.), then enter the 6-digit code it shows.</p>'
+          + '<img src="' + mfaEnrollment.qrCode + '" alt="QR code" style="display:block; width:180px; height:180px; margin:10px 0; border:1px solid var(--border); border-radius:var(--radius-sm);" />'
+          + '<p class="account-note">Can’t scan it? Enter this key manually instead: <code>' + mfaEnrollment.secret + '</code></p>'
+          + '<div class="account-field"><label>Code from your app</label>'
+          + '<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" id="mfaEnrollCode" placeholder="123456" /></div>'
+          + '<button class="btn-primary" onclick="confirmMfaEnrollment()">Verify &amp; enable</button>'
+          + ' <button class="btn-secondary" onclick="cancelMfaEnrollment()" style="margin-left:8px;">Cancel</button>'
+          + '<div id="mfaStatusMsg"></div>'
+          + '</div>';
+      }
+
+      if (verified.length) {
+        return '<div class="card"><h2>🔐 Two-factor authentication</h2>'
+          + '<p class="account-note">On — your authenticator app is required at sign-in, on top of your password or magic link.</p>'
+          + '<button class="btn-secondary" onclick="disableMfa(\'' + verified[0].id + '\')">Turn off</button>'
+          + '<div id="mfaStatusMsg"></div>'
+          + '</div>';
+      }
+
+      return '<div class="card"><h2>🔐 Two-factor authentication</h2>'
+        + '<p class="account-note">Off. Add an authenticator app for an extra check at sign-in.</p>'
+        + '<button class="btn-secondary" onclick="startMfaEnrollment()">Set up two-factor authentication</button>'
+        + '<div id="mfaStatusMsg"></div>'
+        + '</div>';
+    }
+
+    async function startMfaEnrollment() {
+      const status = document.getElementById('mfaStatusMsg');
+      try {
+        const { data, error } = await sb.auth.mfa.enroll({ factorType: 'totp' });
+        if (error) throw error;
+        mfaEnrollment = { factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret };
+        renderAccountPanel();
+      } catch (err) {
+        if (status) status.innerHTML = '<p class="account-error">' + (err.message || 'Could not start setup') + '</p>';
+      }
+    }
+
+    async function cancelMfaEnrollment() {
+      // Un-enroll the half-finished factor rather than just clearing local
+      // state — Supabase caps how many factors a user can have, so an
+      // abandoned unverified one left behind would eventually get in the
+      // way of a real attempt.
+      if (mfaEnrollment) {
+        await sb.auth.mfa.unenroll({ factorId: mfaEnrollment.factorId }).catch(() => {});
+      }
+      mfaEnrollment = null;
+      renderAccountPanel();
+    }
+
+    async function confirmMfaEnrollment() {
+      const code = document.getElementById('mfaEnrollCode').value.trim();
+      const status = document.getElementById('mfaStatusMsg');
+      if (!code) { status.innerHTML = '<p class="account-error">Enter the 6-digit code</p>'; return; }
+      status.innerHTML = '<p class="account-note">Verifying…</p>';
+      try {
+        const { data: challenge, error: challengeErr } = await sb.auth.mfa.challenge({ factorId: mfaEnrollment.factorId });
+        if (challengeErr) throw challengeErr;
+        const { error: verifyErr } = await sb.auth.mfa.verify({
+          factorId: mfaEnrollment.factorId,
+          challengeId: challenge.id,
+          code,
+        });
+        if (verifyErr) throw verifyErr;
+        mfaEnrollment = null;
+        renderAccountPanel();
+      } catch (err) {
+        status.innerHTML = '<p class="account-error">' + (err.message || 'Invalid code — try again') + '</p>';
+      }
+    }
+
+    async function disableMfa(factorId) {
+      const status = document.getElementById('mfaStatusMsg');
+      status.innerHTML = '<p class="account-note">Turning off…</p>';
+      const { error } = await sb.auth.mfa.unenroll({ factorId });
+      if (error) {
+        status.innerHTML = '<p class="account-error">' + error.message + '</p>';
+        return;
+      }
+      renderAccountPanel();
+    }
+
+    // Shown instead of the normal account panel when a signed-in session
+    // hasn't yet cleared its second factor (see the aal check in
+    // renderAccountPanel) — sign-in itself succeeded, but nothing account-
+    // related loads until this passes, matching what requireAuth.js
+    // enforces server-side.
+    function renderMfaChallengeCard() {
+      return '<div class="card"><h2>🔐 Two-factor verification</h2>'
+        + '<p class="account-note">Enter the 6-digit code from your authenticator app.</p>'
+        + '<div class="account-field"><label>Code</label>'
+        + '<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" id="mfaChallengeCode" placeholder="123456" /></div>'
+        + '<button class="btn-primary" onclick="verifyMfaChallenge()">Verify</button>'
+        + ' <button class="btn-secondary" onclick="signOut()" style="margin-left:8px;">Sign out</button>'
+        + '<div id="mfaChallengeStatus"></div>'
+        + '</div>';
+    }
+
+    async function verifyMfaChallenge() {
+      const code = document.getElementById('mfaChallengeCode').value.trim();
+      const status = document.getElementById('mfaChallengeStatus');
+      if (!code) { status.innerHTML = '<p class="account-error">Enter the 6-digit code</p>'; return; }
+      status.innerHTML = '<p class="account-note">Verifying…</p>';
+      try {
+        const { data: factors, error: factorsErr } = await sb.auth.mfa.listFactors();
+        if (factorsErr) throw factorsErr;
+        const factor = (factors.totp || [])[0];
+        if (!factor) throw new Error('No authenticator app found on this account');
+        const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: factor.id, code });
+        if (error) throw error;
+        renderAccountPanel();
+      } catch (err) {
+        status.innerHTML = '<p class="account-error">' + (err.message || 'Invalid code — try again') + '</p>';
+      }
     }
 
     // ── Business directory: manage YOUR OWN listing (see routes/business.js).
