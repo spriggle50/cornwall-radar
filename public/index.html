@@ -395,11 +395,13 @@
        Reuses .card/.back-btn from the rest of the site rather than
        inventing a new visual language for one panel. */
     .account-btn {
-      background: rgba(255,255,255,0.18); border: none; color: #fff; width: 38px; height: 38px;
-      border-radius: 50%; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center;
-      justify-content: center; flex-shrink: 0;
+      background: rgba(255,255,255,0.18); border: none; color: #fff; height: 38px;
+      border-radius: 999px; font-size: 0.85rem; font-weight: 700; cursor: pointer; display: flex;
+      align-items: center; justify-content: center; flex-shrink: 0; gap: 6px; padding: 0 14px 0 12px;
+      white-space: nowrap;
     }
     .account-btn:hover { background: rgba(255,255,255,0.28); }
+    .account-btn .account-btn-icon { font-size: 1.05rem; line-height: 1; }
     .header-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .header-top-text { min-width: 0; }
 
@@ -561,7 +563,9 @@
         <h1><img src="/brand/icon-96.png" alt="" /> Cornwall Radar</h1>
         <p>The place to check before heading out</p>
       </div>
-      <button class="account-btn" id="accountBtn" title="Account">👤</button>
+      <button class="account-btn" id="accountBtn" title="Sign in or manage your account">
+        <span class="account-btn-icon">👤</span><span id="accountBtnLabel">Sign in</span>
+      </button>
     </div>
   </header>
   <div class="location-wrap">
@@ -2228,7 +2232,9 @@
           // MFA challenge verified, etc.) — simplest correct behaviour is
           // just re-rendering whatever's currently open.
           if (!document.getElementById('accountPanel').hidden) renderAccountPanel();
+          updateAccountButtonLabel();
         });
+        updateAccountButtonLabel();
       }
 
       document.getElementById('accountBtn').addEventListener('click', () => {
@@ -2255,6 +2261,20 @@
     function closeAccountPanel() {
       document.getElementById('accountPanel').hidden = true;
       document.getElementById('app').hidden = false;
+      updateAccountButtonLabel();
+    }
+
+    // Keeps the header button's text in sync with whether anyone's signed
+    // in, so it reads "Sign in" (the discoverable call-to-action a first-time
+    // visitor needs) until there's an actual session, then switches to
+    // "Account" once there is one. Cheap to call often — getSession() reads
+    // the already-stored session rather than making a network round trip.
+    async function updateAccountButtonLabel() {
+      const label = document.getElementById('accountBtnLabel');
+      if (!label) return;
+      if (!sb) { label.textContent = 'Sign in'; return; }
+      const { data: { session } } = await sb.auth.getSession();
+      label.textContent = session ? 'Account' : 'Sign in';
     }
 
     // Attaches the signed-in user's Supabase access token to a request
