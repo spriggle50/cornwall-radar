@@ -156,7 +156,18 @@ router.post('/', async (req, res) => {
     const duplicate = alertType === 'traffic_route'
       ? (existingForLocation || []).some((p) => p.config && p.config.destinationLocationId === destinationLocationId)
       : (existingForLocation || []).length > 0;
-    if (duplicate) return res.status(409).json({ error: 'You already have this alert set up for that location — edit or remove it instead' });
+    if (duplicate) {
+      // morning_digest and traffic_route have an editable field (send hour,
+      // delay threshold), so it's genuinely true you can edit those instead
+      // of removing them. weather_warning/wildlife_nearby have nothing to
+      // edit yet, so don't tell the user "edit" is an option that isn't there.
+      const canEdit = alertType === 'morning_digest' || alertType === 'traffic_route';
+      return res.status(409).json({
+        error: canEdit
+          ? 'You already have this alert set up for that location — edit or remove it instead'
+          : 'You already have this alert set up for that location — remove it if you want to change it',
+      });
+    }
 
     const { data, error } = await supabaseAdmin
       .from('alert_preferences')
@@ -177,24 +188,53 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT /api/alerts/:id  { active } — toggle on/off. (Changing the digest
-// hour or a radius is a remove-then-re-add in this first version, same as
-// every other "edit" in this codebase's account panel being an upsert
-// rather than a partial-field edit form.)
+// PUT /api/alerts/:id  { active, config } — toggle on/off, and/or edit the
+// one editable field each alert type has: morning_digest's sendHour, or
+// traffic_route's delayThresholdMinutes. Changing a traffic_route's actual
+// origin/destination is still a remove-then-re-add — only the threshold is
+// editable in place. weather_warning/wildlife_nearby have no editable
+// config yet, so a config edit for those is rejected rather than silently
+// accepted and ignored.
 router.put('/:id', async (req, res) => {
-  const { active } = req.body || {};
+  const { active, config } = req.body || {};
+  if (active === undefined && config === undefined) {
+    return res.status(400).json({ error: 'Nothing to update' });
+  }
   try {
     const { data: existing } = await supabaseAdmin
       .from('alert_preferences')
-      .select('id')
+      .select('id, alert_type, config')
       .eq('id', req.params.id)
       .eq('consumer_id', req.user.id)
       .maybeSingle();
     if (!existing) return res.status(404).json({ error: 'Alert preference not found' });
 
+    const updates = {};
+    if (active !== undefined) updates.active = !!active;
+
+    if (config !== undefined) {
+      if (existing.alert_type === 'morning_digest') {
+        const hour = Number(config && config.sendHour);
+        if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+          return res.status(400).json({ error: 'A valid send hour (0-23) is required for the morning digest' });
+        }
+        updates.config = { sendHour: hour };
+      } else if (existing.alert_type === 'traffic_route') {
+        const delayThresholdMinutes = Number(config && config.delayThresholdMinutes);
+        if (!Number.isInteger(delayThresholdMinutes) || delayThresholdMinutes < 1 || delayThresholdMinutes > 120) {
+          return res.status(400).json({ error: 'Delay threshold must be a whole number of minutes between 1 and 120' });
+        }
+        // Origin/destination aren't editable here — only the threshold —
+        // so keep the existing destinationLocationId as-is.
+        updates.config = { ...(existing.config || {}), delayThresholdMinutes };
+      } else {
+        return res.status(400).json({ error: 'This alert type has nothing to edit — remove it and set it up again instead' });
+      }
+    }
+
     const { data, error } = await supabaseAdmin
       .from('alert_preferences')
-      .update({ active: !!active })
+      .update(updates)
       .eq('id', req.params.id)
       .select('id, location_id, alert_type, config, active')
       .single();

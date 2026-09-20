@@ -2427,6 +2427,10 @@
       }
 
       const prefsForType = alertPreferences.filter((p) => p.alertType === type);
+      // Only morning_digest (sendHour) and traffic_route (delayThresholdMinutes)
+      // have an editable field — weather_warning/wildlife_nearby take no
+      // config yet, so they get no Edit button at all rather than one that
+      // opens a form with nothing in it.
       const rows = prefsForType.map((p) => {
         let label = p.locationLabel;
         if (meta.needsRoute) {
@@ -2436,8 +2440,32 @@
         } else if (meta.needsHour && p.config && typeof p.config.sendHour === 'number') {
           label += ' at ' + formatHour(p.config.sendHour);
         }
+
+        let editButton = '';
+        let editForm = '';
+        if (meta.needsRoute) {
+          const currentThreshold = (p.config && p.config.delayThresholdMinutes) || 10;
+          const thresholdOptions = DELAY_THRESHOLD_OPTIONS.map((m) => '<option value="' + m + '"' + (m === currentThreshold ? ' selected' : '') + '>' + m + ' min</option>').join('');
+          editButton = '<button class="btn-secondary" style="margin-right:6px;" onclick="showEditAlertPref(\'' + p.id + '\')">Edit</button>';
+          editForm = '<div class="account-field" id="alertEditForm-' + p.id + '" hidden>'
+            + '<label>Alert when delay is at least</label><select id="alertEditThreshold-' + p.id + '">' + thresholdOptions + '</select>'
+            + ' <button class="btn-primary" onclick="saveAlertPrefEdit(\'' + p.id + '\', \'' + type + '\')">Save</button>'
+            + ' <button class="btn-secondary" onclick="cancelEditAlertPref(\'' + p.id + '\')">Cancel</button>'
+            + '</div>';
+        } else if (meta.needsHour) {
+          const currentHour = (p.config && typeof p.config.sendHour === 'number') ? p.config.sendHour : 8;
+          const hourOptions = Array.from({ length: 24 }, (_, h) => '<option value="' + h + '"' + (h === currentHour ? ' selected' : '') + '>' + formatHour(h) + '</option>').join('');
+          editButton = '<button class="btn-secondary" style="margin-right:6px;" onclick="showEditAlertPref(\'' + p.id + '\')">Edit</button>';
+          editForm = '<div class="account-field" id="alertEditForm-' + p.id + '" hidden>'
+            + '<label>Send at</label><select id="alertEditHour-' + p.id + '">' + hourOptions + '</select>'
+            + ' <button class="btn-primary" onclick="saveAlertPrefEdit(\'' + p.id + '\', \'' + type + '\')">Save</button>'
+            + ' <button class="btn-secondary" onclick="cancelEditAlertPref(\'' + p.id + '\')">Cancel</button>'
+            + '</div>';
+        }
+
         return '<div class="location-row">'
-          + '<div><div class="location-row-label">' + label + '</div></div>'
+          + '<div><div class="location-row-label">' + label + '</div>' + editForm + '</div>'
+          + editButton
           + '<button class="btn-secondary" style="margin-right:6px;" onclick="toggleAlertPref(\'' + p.id + '\', ' + (!p.active) + ')">' + (p.active ? 'Turn off' : 'Turn on') + '</button>'
           + '<button class="location-row-remove" onclick="removeAlertPref(\'' + p.id + '\')">Remove</button>'
           + '</div>';
@@ -2530,6 +2558,40 @@
     async function removeAlertPref(id) {
       try {
         await authedFetch('/api/alerts/' + id, { method: 'DELETE' });
+        renderAccountPanel();
+      } catch (err) {
+        showAccountError(err.message);
+      }
+    }
+
+    // Edit is only offered for morning_digest (sendHour) and traffic_route
+    // (delayThresholdMinutes) rows — see renderAlertTypeCard, which only
+    // renders alertEditForm-<id> for those two types. The form is rendered
+    // pre-filled with the current value up front and just hidden, same
+    // reveal-on-click pattern as showReviewReplyForm above, rather than
+    // built fresh from scratch on click.
+    function showEditAlertPref(id) {
+      const form = document.getElementById('alertEditForm-' + id);
+      if (form) form.hidden = false;
+    }
+
+    function cancelEditAlertPref(id) {
+      const form = document.getElementById('alertEditForm-' + id);
+      if (form) form.hidden = true;
+    }
+
+    async function saveAlertPrefEdit(id, type) {
+      const meta = ALERT_TYPE_META[type];
+      const config = {};
+      if (meta.needsRoute) {
+        const thresholdSelect = document.getElementById('alertEditThreshold-' + id);
+        config.delayThresholdMinutes = parseInt(thresholdSelect.value, 10);
+      } else if (meta.needsHour) {
+        const hourSelect = document.getElementById('alertEditHour-' + id);
+        config.sendHour = parseInt(hourSelect.value, 10);
+      }
+      try {
+        await authedFetch('/api/alerts/' + id, { method: 'PUT', body: JSON.stringify({ config }) });
         renderAccountPanel();
       } catch (err) {
         showAccountError(err.message);
