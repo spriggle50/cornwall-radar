@@ -64,11 +64,20 @@ router.get('/', async (req, res) => {
       .from('businesses')
       .select('id, name, category, description, phone, website, postcode, lat, lng, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at');
 
+    // A single category keeps the exact-match ILIKE the directory's own
+    // filter dropdown has always used. A comma-separated list (used by the
+    // Days Out & Activities card, which spans both the "Attractions" and
+    // "Activities" categories) switches to an exact-value .in() match
+    // instead — these come from our own fixed category list, not free text,
+    // so no ILIKE wildcard is needed there.
     if (category && category.trim()) {
-      query = query.ilike('category', category.trim());
+      const categories = category.split(',').map((c) => c.trim()).filter(Boolean);
+      query = categories.length > 1
+        ? query.in('category', categories)
+        : query.ilike('category', categories[0]);
     }
     // ?voucher=1 — used by the "Vouchers & Offers" page (any category, not
-    // just Days Out & Attractions) to show only listings currently offering
+    // just Attractions/Activities) to show only listings currently offering
     // one. A voucher with no voucher_expires_at runs indefinitely; one with
     // a past expiry is treated as gone even though the row itself isn't
     // deleted, so an owner doesn't have to remember to clear it the day it lapses.

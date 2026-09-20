@@ -28,7 +28,16 @@ const BUSINESS_CATEGORIES = [
   'Farm Shops & Local Produce',
   'Accommodation',
   'Arts, Crafts & Gifts',
-  'Days Out & Attractions',
+  // Split from the single "Days Out & Attractions" category into two, to
+  // match how people actually browse for things to do (and how competing
+  // Cornwall directories categorise it) — a static museum/garden/sanctuary
+  // browses differently from a hands-on activity like kayaking or an escape
+  // room. Safe to split outright rather than rename-with-migration since
+  // this category was only just introduced and had no real listings under
+  // it yet — if a test listing was created on staging under the old name,
+  // its owner just needs to re-pick a category from the edit form.
+  'Attractions',
+  'Activities',
   'Events & Entertainment',
   'Photography & Media',
   'IT & Tech Services',

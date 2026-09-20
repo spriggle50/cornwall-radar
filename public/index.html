@@ -1998,12 +1998,18 @@
 
     // ── Days Out & Activities — "things to do" for locals/visitors,
     // reusing the same businesses table/directory endpoint as the Business
-    // Directory above, just pre-filtered to the "Days Out & Attractions"
-    // category (see lib/businessCategories.js) instead of offering every
-    // category. Attraction/activity providers list themselves exactly the
-    // same way any other business does, from the account panel.
-    const ACTIVITIES_CATEGORY = 'Days Out & Attractions';
-    let activitiesFilters = { q: '' };
+    // Directory above, just pre-filtered to the "Attractions" and
+    // "Activities" categories (see lib/businessCategories.js) instead of
+    // offering every category. Split into two categories rather than one
+    // catch-all "Days Out & Attractions" so browsing/filtering matches how
+    // people actually think about it (a static attraction vs. a hands-on
+    // activity) — a category filter here narrows to just one of the two,
+    // same idea as the main directory's category dropdown, or leave it on
+    // "Both" to see everything under this card. Attraction/activity
+    // providers list themselves exactly the same way any other business
+    // does, from the account panel.
+    const ACTIVITIES_CATEGORIES = ['Attractions', 'Activities'];
+    let activitiesFilters = { q: '', category: '' };
 
     async function renderActivitiesDetail() {
       const panel = document.getElementById('detailPanel');
@@ -2013,7 +2019,7 @@
       let data;
       try {
         const params = new URLSearchParams();
-        params.set('category', ACTIVITIES_CATEGORY);
+        params.set('category', activitiesFilters.category || ACTIVITIES_CATEGORIES.join(','));
         if (activitiesFilters.q) params.set('q', activitiesFilters.q);
         if (currentLocation) { params.set('lat', currentLocation.lat); params.set('lon', currentLocation.lon); }
         const res = await fetch('/api/directory?' + params.toString());
@@ -2037,10 +2043,19 @@
       activitiesSearchTimer = setTimeout(renderActivitiesDetail, 350);
     }
 
+    function onActivitiesCategoryChange(value) {
+      activitiesFilters.category = value;
+      renderActivitiesDetail();
+    }
+
     function renderActivitiesCard(data) {
+      const categoryOptions = '<option value="">Both</option>'
+        + ACTIVITIES_CATEGORIES.map((c) => '<option value="' + c + '"'
+          + (activitiesFilters.category === c ? ' selected' : '') + '>' + c + '</option>').join('');
       const searchBar = '<div class="directory-search-bar">'
         + '<input type="text" id="activitiesSearchInput" placeholder="Search things to do…" value="'
         + (activitiesFilters.q || '').replace(/"/g, '&quot;') + '" oninput="onActivitiesSearchInput(this.value)" />'
+        + '<select id="activitiesCategoryInput" onchange="onActivitiesCategoryChange(this.value)">' + categoryOptions + '</select>'
         + '</div>';
 
       const businesses = (data && data.businesses) || [];
@@ -2051,7 +2066,7 @@
       } else if (data && data.error) {
         body = '<p class="unavailable">Could not load activities right now.</p>';
       } else if (!businesses.length) {
-        body = '<p class="account-note">No days out or activities listed yet' + (activitiesFilters.q ? ' matching that search.' : ' — check back soon, or list one from the account panel!') + '</p>';
+        body = '<p class="account-note">No days out or activities listed yet' + (activitiesFilters.q || activitiesFilters.category ? ' matching that search.' : ' — check back soon, or list one from the account panel!') + '</p>';
       } else {
         body = businesses.map(renderDirectoryRow).join('');
       }
@@ -2063,7 +2078,7 @@
         + '</div>'
         + '<div class="card">'
         + '<h2>📋 Run an attraction or activity?</h2>'
-        + '<p class="account-note">List it for free under "' + ACTIVITIES_CATEGORY + '", and add a voucher too, from the account panel.</p>'
+        + '<p class="account-note">List it for free under "Attractions" or "Activities", and add a voucher too, from the account panel.</p>'
         + '<button class="btn-primary" onclick="closeDetail(); openAccountPanel();">List your business</button>'
         + '</div>';
     }
