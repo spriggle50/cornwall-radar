@@ -1843,6 +1843,7 @@
     let accountData = null;      // last-fetched /api/account/me payload
     let businessData = null;     // last-fetched /api/business/me payload's `business` (or null)
     let businessCategories = []; // last-fetched fixed category list, for the listing form's dropdown
+    let passwordRecoveryMode = false; // true after arriving via a "reset your password" email link, until a new password is saved
 
     async function initAccount() {
       try {
@@ -1854,9 +1855,22 @@
 
       if (publicConfig.supabaseUrl && publicConfig.supabaseAnonKey && window.supabase) {
         sb = window.supabase.createClient(publicConfig.supabaseUrl, publicConfig.supabaseAnonKey);
-        // Fires after a magic-link redirect completes and after sign-out —
-        // simplest correct behaviour is just re-rendering whatever's open.
-        sb.auth.onAuthStateChange(() => {
+        sb.auth.onAuthStateChange((event) => {
+          // Fires when someone arrives via the "reset your password" email
+          // link — Supabase signs them into a short-lived recovery session
+          // automatically. Force the account panel open (it's usually
+          // still hidden at this point, since this is a fresh page load
+          // from an email link, not a click on the account button) and
+          // show the "set a new password" card instead of whatever else
+          // might otherwise render for a freshly-signed-in session.
+          if (event === 'PASSWORD_RECOVERY') {
+            passwordRecoveryMode = true;
+            openAccountPanel();
+            return;
+          }
+          // Otherwise (magic-link redirect completing, sign-in, sign-out,
+          // MFA challenge verified, etc.) — simplest correct behaviour is
+          // just re-rendering whatever's currently open.
           if (!document.getElementById('accountPanel').hidden) renderAccountPanel();
         });
       }
@@ -1934,6 +1948,17 @@
         return;
       }
 
+      // Set-a-new-password step of the "forgot password" flow takes over
+      // the whole panel until it's done — checked before the normal
+      // session check below since Supabase's recovery link DOES sign the
+      // person in (to a short-lived recovery session), so without this
+      // they'd otherwise land straight in their normal signed-in account
+      // instead of being asked to actually pick a new password.
+      if (passwordRecoveryMode) {
+        panel.innerHTML = backBtn + msgSlot + renderPasswordRecoveryCard();
+        return;
+      }
+
       const { data: { session } } = await sb.auth.getSession();
       if (!session) {
         panel.innerHTML = backBtn + msgSlot + renderLoginCard();
@@ -1993,7 +2018,7 @@
     // These two bits of UI state just control which form the login card
     // shows; they reset to the default whenever the card is re-rendered
     // from scratch (e.g. after signing out).
-    let loginMode = 'magiclink';   // 'magiclink' | 'password'
+    let loginMode = 'magiclink';   // 'magiclink' | 'password' | 'reset'
     let passwordAction = 'signin'; // 'signin' | 'signup' — only shown in password mode
 
     function renderLoginCard() {
@@ -2001,26 +2026,38 @@
       const emailValue = existingEmail ? existingEmail.value : '';
 
       let body;
+      let modeToggle;
       if (loginMode === 'magiclink') {
         body = '<div class="account-field"><label>Email address</label>'
           + '<input type="email" id="loginEmail" placeholder="you@example.com" value="' + emailValue.replace(/"/g, '&quot;') + '" /></div>'
           + '<button class="btn-primary" onclick="sendMagicLink()">Send me a sign-in link</button>';
+        modeToggle = '<p class="account-note" style="margin-top:14px;">Prefer a password? <a href="#" onclick="switchLoginMode(\'password\'); return false;">Use a password instead</a></p>';
+      } else if (loginMode === 'reset') {
+        // Supabase's own password-recovery flow: this just requests the
+        // email; the actual "pick a new password" step happens after the
+        // person clicks the link they're sent, handled separately by the
+        // PASSWORD_RECOVERY auth event (see initAccount/renderPasswordRecoveryCard).
+        body = '<p class="account-note" style="margin:0 0 10px;">We’ll email you a link to set a new password.</p>'
+          + '<div class="account-field"><label>Email address</label>'
+          + '<input type="email" id="loginEmail" placeholder="you@example.com" value="' + emailValue.replace(/"/g, '&quot;') + '" /></div>'
+          + '<button class="btn-primary" onclick="sendPasswordReset()">Send reset link</button>';
+        modeToggle = '<p class="account-note" style="margin-top:14px;"><a href="#" onclick="switchLoginMode(\'password\'); return false;">Back to sign in</a></p>';
       } else {
         const actionNote = passwordAction === 'signin'
           ? 'New here? <a href="#" onclick="switchPasswordAction(\'signup\'); return false;">Create an account</a> instead.'
           : 'Already have an account? <a href="#" onclick="switchPasswordAction(\'signin\'); return false;">Sign in</a> instead.';
-        body = '<p class="account-note" style="margin:0 0 10px;">' + actionNote + '</p>'
+        const forgotLink = passwordAction === 'signin'
+          ? ' <a href="#" onclick="switchLoginMode(\'reset\'); return false;" style="margin-left:8px;">Forgot your password?</a>'
+          : '';
+        body = '<p class="account-note" style="margin:0 0 10px;">' + actionNote + forgotLink + '</p>'
           + '<div class="account-field"><label>Email address</label>'
           + '<input type="email" id="loginEmail" placeholder="you@example.com" value="' + emailValue.replace(/"/g, '&quot;') + '" /></div>'
           + '<div class="account-field"><label>Password</label>'
           + '<input type="password" id="loginPassword" placeholder="' + (passwordAction === 'signup' ? 'At least 6 characters' : 'Your password') + '" /></div>'
           + '<button class="btn-primary" onclick="' + (passwordAction === 'signup' ? 'signUpWithPassword()' : 'signInWithPasswordFlow()') + '">'
           + (passwordAction === 'signup' ? 'Create account' : 'Sign in') + '</button>';
+        modeToggle = '<p class="account-note" style="margin-top:14px;">Prefer not to set a password? <a href="#" onclick="switchLoginMode(\'magiclink\'); return false;">Use a magic link instead</a></p>';
       }
-
-      const modeToggle = loginMode === 'magiclink'
-        ? '<p class="account-note" style="margin-top:14px;">Prefer a password? <a href="#" onclick="switchLoginMode(\'password\'); return false;">Use a password instead</a></p>'
-        : '<p class="account-note" style="margin-top:14px;">Prefer not to set a password? <a href="#" onclick="switchLoginMode(\'magiclink\'); return false;">Use a magic link instead</a></p>';
 
       return '<div class="card"><h2>👤 Sign in</h2>'
         + '<p class="account-note">Sign in to save locations and set up your morning digest.</p>'
@@ -2055,6 +2092,22 @@
       status.innerHTML = error
         ? '<p class="account-error">' + error.message + '</p>'
         : '<p class="account-success">Check your email for a sign-in link.</p>';
+    }
+
+    async function sendPasswordReset() {
+      const email = document.getElementById('loginEmail').value.trim();
+      const status = document.getElementById('loginStatus');
+      if (!email) { status.innerHTML = '<p class="account-error">Enter your email first</p>'; return; }
+      status.innerHTML = '<p class="account-note">Sending…</p>';
+      const { error } = await sb.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
+      // Same "don't reveal who's registered" behaviour as sign-up — Supabase
+      // returns success here regardless of whether the email has an
+      // account, so the message is worded to cover both cases honestly.
+      status.innerHTML = error
+        ? '<p class="account-error">' + error.message + '</p>'
+        : '<p class="account-success">If that email has an account, a reset link is on its way.</p>';
     }
 
     async function signInWithPasswordFlow() {
@@ -2105,10 +2158,13 @@
 
     async function signOut() {
       await sb.auth.signOut();
-      // A half-finished enrollment (QR shown, code not yet entered) is
-      // per-session UI state, not something that should survive into the
-      // next person who signs in on this same browser/tab.
+      // Both are per-session UI state, not something that should survive
+      // into the next person who signs in on this same browser/tab: a
+      // half-finished MFA enrollment (QR shown, code not yet entered), and
+      // a stale "come back to set a new password" flag from a recovery
+      // link that was abandoned without saving one.
       mfaEnrollment = null;
+      passwordRecoveryMode = false;
       renderAccountPanel();
     }
 
@@ -2203,6 +2259,36 @@
       }
       status.innerHTML = '<p class="account-success">Password saved — you can now sign in with your email and this password instead of a magic link.</p>';
       document.getElementById('newPassword').value = '';
+    }
+
+    // Shown instead of the normal account panel after someone clicks a
+    // "reset your password" email link (see the PASSWORD_RECOVERY handling
+    // in initAccount) — takes over until a new password is actually saved.
+    function renderPasswordRecoveryCard() {
+      return '<div class="card"><h2>🔒 Set a new password</h2>'
+        + '<p class="account-note">Choose a new password for your account.</p>'
+        + '<div class="account-field"><label>New password</label>'
+        + '<input type="password" id="recoveryPassword" placeholder="At least 6 characters" /></div>'
+        + '<button class="btn-primary" onclick="completePasswordRecovery()">Save new password</button>'
+        + '<div id="recoveryStatusMsg"></div>'
+        + '</div>';
+    }
+
+    async function completePasswordRecovery() {
+      const password = document.getElementById('recoveryPassword').value;
+      const status = document.getElementById('recoveryStatusMsg');
+      if (!password || password.length < 6) {
+        status.innerHTML = '<p class="account-error">Password must be at least 6 characters</p>';
+        return;
+      }
+      status.innerHTML = '<p class="account-note">Saving…</p>';
+      const { error } = await sb.auth.updateUser({ password });
+      if (error) {
+        status.innerHTML = '<p class="account-error">' + error.message + '</p>';
+        return;
+      }
+      passwordRecoveryMode = false;
+      renderAccountPanel();
     }
 
     // ── Two-factor authentication (TOTP via an authenticator app). Entirely
