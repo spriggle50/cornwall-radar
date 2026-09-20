@@ -530,6 +530,9 @@
     .sponsored-card-category { font-size: 0.72rem; color: var(--text-2); margin-top: 2px; }
 
     footer { text-align: center; padding: 24px 16px; color: var(--text-3); font-size: 0.78rem; }
+    footer .footer-legal { margin-top: 8px; }
+    footer .footer-legal a { color: var(--text-2); text-decoration: none; margin: 0 6px; }
+    footer .footer-legal a:hover { text-decoration: underline; }
 
     /* ── Wider screens: the whole layout was tuned mobile-first at 640px,
        which leaves a lot of dead space either side on a desktop browser.
@@ -577,7 +580,15 @@
     <div id="detailPanel" hidden></div>
   </main>
   <main id="accountPanel" hidden></main>
-  <footer>Weather: Open-Meteo · Wildlife: GBIF · Buses: BODS · Traffic: TomTom &amp; National Highways · Tides: tidetimes.org.uk</footer>
+  <footer>
+    Weather: Open-Meteo · Wildlife: GBIF · Buses: BODS · Traffic: TomTom &amp; National Highways · Tides: tidetimes.org.uk
+    <div class="footer-legal">
+      <a href="/privacy-policy.html">Privacy Policy</a>·
+      <a href="/terms.html">Terms of Use</a>·
+      <a href="/cookie-policy.html">Cookie Policy</a>·
+      <a href="mailto:info@cornwallradar.co.uk">Contact us</a>
+    </div>
+  </footer>
 
   <script>
     // ── Location search ──────────────────────────────────────────────────
