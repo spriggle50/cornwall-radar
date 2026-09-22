@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cornwall Radar — live weather, tides, traffic & things to do</title>
   <meta name="description" content="Live weather, tide times, traffic, buses, wildlife sightings, local news, days out and vouchers for Cornwall — all in one place, free to use." />
-  <link rel="canonical" href="https://cornwallradar.co.uk/" />
+  <!-- www, not the bare domain — cornwallradar.co.uk (no www) only has a
+       301 forward to this address, since a CNAME (what Railway needs) can
+       never sit at a bare domain's root. Crawlers/API calls need the real
+       address, not the one that redirects. -->
+  <link rel="canonical" href="https://www.cornwallradar.co.uk/" />
   <!-- Social share preview (Facebook/WhatsApp/Nextdoor/X etc.) — this is
        what turns a bare link posted in a community group into something
        people actually stop and click, so it matters more than usual for a
@@ -16,12 +20,12 @@
   <meta property="og:site_name" content="Cornwall Radar" />
   <meta property="og:title" content="Cornwall Radar — live weather, tides, traffic & things to do" />
   <meta property="og:description" content="Live weather, tide times, traffic, buses, wildlife sightings, local news, days out and vouchers for Cornwall — all in one place, free to use." />
-  <meta property="og:url" content="https://cornwallradar.co.uk/" />
-  <meta property="og:image" content="https://cornwallradar.co.uk/brand/icon-512.png" />
+  <meta property="og:url" content="https://www.cornwallradar.co.uk/" />
+  <meta property="og:image" content="https://www.cornwallradar.co.uk/brand/icon-512.png" />
   <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content="Cornwall Radar — live weather, tides, traffic & things to do" />
   <meta name="twitter:description" content="Live weather, tide times, traffic, buses, wildlife sightings, local news, days out and vouchers for Cornwall — all in one place, free to use." />
-  <meta name="twitter:image" content="https://cornwallradar.co.uk/brand/icon-512.png" />
+  <meta name="twitter:image" content="https://www.cornwallradar.co.uk/brand/icon-512.png" />
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" type="image/png" sizes="32x32" href="/brand/icon-32.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/brand/icon-192.png" />
