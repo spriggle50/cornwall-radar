@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 
 const dashboardRoute = require('./routes/dashboard');
 const accountRoute = require('./routes/account');
@@ -34,6 +35,30 @@ app.use(express.json());
 // Serve the PWA frontend — public/ lives one level up from this file (src/),
 // i.e. directly at the project root. No sibling-folder / monorepo setup here.
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// TEMPORARY — diagnosing why /brand and /images 404 in production despite
+// being committed to main. Reports exactly what the running container sees
+// on disk, since that's the one thing we can't check from outside. Remove
+// this route once the images issue is resolved — it's a read-only
+// directory listing, not sensitive, but it's clutter that shouldn't stick
+// around in the API surface long-term.
+app.get('/api/debug-static', (req, res) => {
+  const publicDir = path.join(__dirname, '..', 'public');
+  const safeList = (dir) => {
+    try {
+      return fs.readdirSync(dir);
+    } catch (err) {
+      return { error: err.message };
+    }
+  };
+  res.json({
+    resolvedPublicDir: publicDir,
+    publicDirExists: fs.existsSync(publicDir),
+    publicContents: safeList(publicDir),
+    imagesContents: safeList(path.join(publicDir, 'images')),
+    brandContents: safeList(path.join(publicDir, 'brand')),
+  });
+});
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'cornwall-radar', time: new Date().toISOString() });
