@@ -729,9 +729,10 @@
 
         const cards = businesses.map((b) => {
           const logo = b.logo_url ? '<img src="' + b.logo_url + '" alt="" class="sponsored-card-logo" />' : '';
-          const href = b.website || '#';
+          const siteUrl = normalizeWebsiteUrl(b.website);
+          const href = siteUrl || '#';
           return '<a class="sponsored-card" href="' + href + '"'
-            + (b.website ? ' target="_blank" rel="noopener"' : ' onclick="openDetail(\'directory\'); return false;"')
+            + (siteUrl ? ' target="_blank" rel="noopener"' : ' onclick="openDetail(\'directory\'); return false;"')
             + '>' + logo
             + '<div class="sponsored-card-name">' + b.name + '</div>'
             + '<div class="sponsored-card-category">' + b.category + '</div>'
@@ -1958,6 +1959,22 @@
       return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     }
 
+    // A business owner types "trustedtech.uk.com", not
+    // "https://trustedtech.uk.com" — the PUT /listing save now normalizes
+    // that server-side (see business.js's normalizeWebsiteUrl), but rows
+    // saved before that fix still have the bare form sitting in the
+    // database. Without a scheme, `<a href="trustedtech.uk.com">` is a
+    // RELATIVE link, so clicking it on cornwallradar.co.uk requests
+    // cornwallradar.co.uk/trustedtech.uk.com from our own server and hits
+    // Express's "Cannot GET" 404 instead of leaving the site. Normalizing
+    // again here means existing listings start working immediately, without
+    // waiting for every business owner to re-save their listing.
+    function normalizeWebsiteUrl(raw) {
+      const trimmed = (raw || '').trim();
+      if (!trimmed) return '';
+      return /^https?:\/\//i.test(trimmed) ? trimmed : 'https://' + trimmed;
+    }
+
     // Shared by the full Business Directory, the Days Out & Activities view,
     // and the Vouchers & Offers view — all three list the same kind of
     // `businesses` rows from routes/directory.js, just with different
@@ -1965,7 +1982,8 @@
     // rather than three near-duplicate copies drifting out of sync.
     function renderDirectoryRow(b) {
       const phoneLine = b.phone ? '<a href="tel:' + b.phone.replace(/\s+/g, '') + '">' + b.phone + '</a>' : '';
-      const siteLine = b.website ? '<a href="' + b.website + '" target="_blank" rel="noopener">Website</a>' : '';
+      const siteUrl = normalizeWebsiteUrl(b.website);
+      const siteLine = siteUrl ? '<a href="' + siteUrl + '" target="_blank" rel="noopener">Website</a>' : '';
       const distLine = b.distanceKm != null ? b.distanceKm + 'km away' : null;
       const meta = [distLine, phoneLine, siteLine].filter(Boolean).join(' · ');
       const logo = b.logo_url ? '<img src="' + b.logo_url + '" alt="" class="directory-row-logo" />' : '';
@@ -3107,7 +3125,8 @@
         + '<div class="account-field"><label>Postcode or town</label><input type="text" id="bizPostcode" value="' + esc(business && business.postcode) + '" placeholder="TR1 2AB" /></div>'
         + '<div class="account-field"><label>Description (optional)</label><input type="text" id="bizDescription" value="' + esc(business && business.description) + '" placeholder="What you do, in a sentence" /></div>'
         + '<div class="account-field"><label>Phone (optional)</label><input type="text" id="bizPhone" value="' + esc(business && business.phone) + '" placeholder="01872 000000" /></div>'
-        + '<div class="account-field"><label>Website (optional)</label><input type="text" id="bizWebsite" value="' + esc(business && business.website) + '" placeholder="https://…" /></div>'
+        + '<div class="account-field"><label>Website (optional)</label><input type="text" id="bizWebsite" value="' + esc(business && business.website) + '" placeholder="yourbusiness.co.uk" />'
+        + '<p class="account-note">Just your domain is fine — we\'ll add the https:// automatically.</p></div>'
         + '<div class="account-field"><label>Voucher / offer (optional)</label>'
         + '<p class="account-note">Shown to everyone on the Vouchers & Offers page, and as a badge on your listing. Leave the title blank to remove it.</p>'
         + '<input type="text" id="bizVoucherTitle" value="' + esc(business && business.voucher_title) + '" placeholder="e.g. 20% off entry" style="margin-bottom:6px;" />'

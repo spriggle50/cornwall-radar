@@ -50,6 +50,21 @@ const ADMIN_ACTION_TOKEN = process.env.ADMIN_ACTION_TOKEN;
 
 const escHtml = (v) => String(v == null ? '' : v).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
 
+// Business owners naturally type "trustedtech.uk.com" rather than
+// "https://trustedtech.uk.com" — without a scheme, an <a href="..."> built
+// from that is a RELATIVE link, so a visitor clicking it on
+// cornwallradar.co.uk ends up requesting cornwallradar.co.uk/trustedtech.uk.com
+// from our own server instead of leaving the site, and sees Express's
+// "Cannot GET" 404. Fixing this on save (rather than only at render time)
+// means every place that ever displays business.website — the directory
+// row, the admin email, the account panel preview — gets a working link
+// for free, with no per-view special-casing needed.
+function normalizeWebsiteUrl(raw) {
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return null;
+  return /^https?:\/\//i.test(trimmed) ? trimmed : 'https://' + trimmed;
+}
+
 // ── Admin moderation: new-listing alert + one-click review/removal ────────
 // Listings go live instantly with no approval gate (see PUT /listing) —
 // this is "notify, then remove after the fact if needed" rather than
@@ -189,7 +204,7 @@ router.put('/listing', async (req, res) => {
         category: category.trim(),
         description: (description || '').trim() || null,
         phone: (phone || '').trim() || null,
-        website: (website || '').trim() || null,
+        website: normalizeWebsiteUrl(website),
         postcode: postcode.trim(),
         lat: geo.lat,
         lng: geo.lon,
