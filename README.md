@@ -141,3 +141,67 @@ was already in `schema.sql` from Phase 1.5 with exactly this in mind), and
 no new external cron/pinger to add — the alert engine runs from the exact
 same `GET /api/cron/morning-digest` URL that's already being pinged
 hourly, alongside the digest job it always ran.
+
+## Days Out & Activities, and Vouchers & Offers — built
+
+Two new dashboard cards for locals/visitors, built on top of the existing
+business directory (`routes/business.js`/`routes/directory.js`) rather than
+a separate system, so there's no new signup flow or admin tooling to learn:
+
+- **Days Out & Activities** — a searchable list of attractions/activity
+  listings, using a new business category, "Days Out & Attractions"
+  (`lib/businessCategories.js`). Attraction/activity providers list
+  themselves exactly the way any other business does, from the account
+  panel, free or Featured (£4.99/month) same as any other listing.
+- **Vouchers & Offers** — any business listing, in ANY category, can
+  optionally add a voucher/offer (a title, an optional description, and an
+  optional expiry date) from the account panel's "List your business" form.
+  Open to everyone browsing the site, not gated behind Cornwall Radar's own
+  paid consumer tier — a voucher also shows as a badge on that business's
+  normal directory/activities row, and disappears automatically (without
+  deleting the listing) once its expiry date passes.
+
+**Needs one small database change before this works**: `businesses` gained
+three new nullable columns (`voucher_title`, `voucher_description`,
+`voucher_expires_at`) — run this once in the Supabase SQL editor (also
+folded into `schema.sql` for any future fresh install):
+
+```sql
+alter table businesses add column if not exists voucher_title text;
+alter table businesses add column if not exists voucher_description text;
+alter table businesses add column if not exists voucher_expires_at date;
+```
+
+No new environment variables, and the new "Days Out & Attractions" category
+appears automatically in both the listing form and every directory-style
+filter dropdown, since they all read from the same shared category list.
+
+- **Local Jobs / vacancies** — a business listing can have several open
+  vacancies at once (unlike the single voucher above), managed from its own
+  "Vacancies" list in the account panel: title, an optional description, how
+  to apply (an email address or a link to their own application page — at
+  least one is required), and an optional closing date. Cornwall Radar never
+  collects an application itself, it only links out to whichever the
+  business gave. Open vacancies show as an "N roles open" badge on the
+  business's directory row, and on a dedicated "Local Jobs" page (search by
+  keyword, no category — a business's own categories don't map onto how
+  people search for a job).
+
+**Needs one new table before this works** — run this once in the Supabase
+SQL editor (also folded into `schema.sql` for any future fresh install):
+
+```sql
+create table if not exists business_vacancies (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references businesses(id) on delete cascade,
+  title text not null,
+  description text,
+  apply_email text,
+  apply_url text,
+  expires_at date,
+  created_at timestamptz not null default now()
+);
+alter table business_vacancies enable row level security;
+create policy "businesses manage own vacancies" on business_vacancies for all using (auth.uid() = business_id);
+create policy "anyone can view vacancies" on business_vacancies for select using (true);
+```

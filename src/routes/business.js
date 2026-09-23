@@ -487,4 +487,143 @@ router.delete('/reviews/:reviewId/reply', async (req, res) => {
   }
 });
 
+// ── Business vacancies — a business can have SEVERAL open roles at once
+// (unlike the single optional voucher earlier in this file), so these live
+// in their own table (business_vacancies, one row per vacancy) rather than
+// columns on the businesses row. Same "manage your own, ownership checked
+// against req.user.id" shape as the review-reply endpoints above. Reading
+// vacancies publicly — the "Local Jobs" page and the "N roles open" badge
+// on a directory row — lives in routes/directory.js, same public/private
+// split as reviews.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function validateVacancyInput(body) {
+  const title = ((body && body.title) || '').trim();
+  const description = ((body && body.description) || '').trim() || null;
+  const applyEmail = ((body && body.applyEmail) || '').trim() || null;
+  const applyUrl = normalizeWebsiteUrl(body && body.applyUrl);
+  const expiresAt = ((body && body.expiresAt) || '').trim() || null;
+
+  if (!title) throw new Error('A job title is required');
+  if (!applyEmail && !applyUrl) throw new Error('Add an email address or a web link for people to apply');
+  if (applyEmail && !EMAIL_RE.test(applyEmail)) throw new Error("That doesn't look like a valid email address");
+  if (expiresAt) {
+    const todayKey = new Date().toISOString().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(expiresAt) || Number.isNaN(Date.parse(expiresAt))) {
+      throw new Error('Closing date must be a valid date');
+    }
+    if (expiresAt < todayKey) throw new Error('Closing date must be in the future');
+  }
+  return { title, description, applyEmail, applyUrl, expiresAt };
+}
+
+// GET /api/business/vacancies — the caller's OWN vacancies, for managing
+// them (including ones already past their closing date, so an owner can
+// still see/reopen one rather than it just vanishing from view).
+router.get('/vacancies', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('business_vacancies')
+      .select('id, title, description, apply_email, apply_url, expires_at, created_at')
+      .eq('business_id', req.user.id)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    res.json({ vacancies: data || [] });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Could not load your vacancies' });
+  }
+});
+
+// POST /api/business/vacancies — add a new vacancy. Requires a listing to
+// already exist, same "create the listing, then enhance it" order as the
+// logo upload and Featured upgrade above.
+router.post('/vacancies', async (req, res) => {
+  try {
+    const { data: business } = await supabaseAdmin
+      .from('businesses')
+      .select('id')
+      .eq('id', req.user.id)
+      .maybeSingle();
+    if (!business) {
+      return res.status(400).json({ error: 'Create your business listing first, then add a vacancy' });
+    }
+
+    const clean = validateVacancyInput(req.body);
+    const { data, error } = await supabaseAdmin
+      .from('business_vacancies')
+      .insert({
+        business_id: req.user.id,
+        title: clean.title,
+        description: clean.description,
+        apply_email: clean.applyEmail,
+        apply_url: clean.applyUrl,
+        expires_at: clean.expiresAt,
+      })
+      .select('id, title, description, apply_email, apply_url, expires_at, created_at')
+      .single();
+    if (error) throw new Error(error.message);
+    res.json(data);
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Could not save that vacancy' });
+  }
+});
+
+// PUT /api/business/vacancies/:id — edit a vacancy on the caller's OWN
+// listing. Ownership checked by comparing the vacancy's business_id against
+// req.user.id, not just trusting the id in the URL — same reasoning as the
+// review-reply endpoints (a business row's id IS its owner's auth user id).
+router.put('/vacancies/:id', async (req, res) => {
+  try {
+    const { data: vacancy } = await supabaseAdmin
+      .from('business_vacancies')
+      .select('id, business_id')
+      .eq('id', req.params.id)
+      .maybeSingle();
+    if (!vacancy) return res.status(404).json({ error: 'Vacancy not found' });
+    if (vacancy.business_id !== req.user.id) {
+      return res.status(403).json({ error: 'You can only edit vacancies on your own listing' });
+    }
+
+    const clean = validateVacancyInput(req.body);
+    const { data, error } = await supabaseAdmin
+      .from('business_vacancies')
+      .update({
+        title: clean.title,
+        description: clean.description,
+        apply_email: clean.applyEmail,
+        apply_url: clean.applyUrl,
+        expires_at: clean.expiresAt,
+      })
+      .eq('id', req.params.id)
+      .select('id, title, description, apply_email, apply_url, expires_at, created_at')
+      .single();
+    if (error) throw new Error(error.message);
+    res.json(data);
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Could not update that vacancy' });
+  }
+});
+
+// DELETE /api/business/vacancies/:id — remove a vacancy from the caller's
+// OWN listing.
+router.delete('/vacancies/:id', async (req, res) => {
+  try {
+    const { data: vacancy } = await supabaseAdmin
+      .from('business_vacancies')
+      .select('id, business_id')
+      .eq('id', req.params.id)
+      .maybeSingle();
+    if (!vacancy) return res.status(404).json({ error: 'Vacancy not found' });
+    if (vacancy.business_id !== req.user.id) {
+      return res.status(403).json({ error: 'You can only remove vacancies on your own listing' });
+    }
+
+    const { error } = await supabaseAdmin.from('business_vacancies').delete().eq('id', req.params.id);
+    if (error) throw new Error(error.message);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Could not remove that vacancy' });
+  }
+});
+
 module.exports = router;

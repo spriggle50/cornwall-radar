@@ -911,6 +911,7 @@
       // as the directory above — their own public endpoint, own filters.
       if (key === 'activities') return 'Search things to do across Cornwall';
       if (key === 'vouchers') return 'Local discounts and offers — free to browse';
+      if (key === 'jobs') return 'Roles posted directly by Cornwall businesses';
       return '';
     }
 
@@ -918,6 +919,7 @@
       { key: 'directory', icon: '🏪', title: 'Business Directory' },
       { key: 'activities', icon: '🎡', title: 'Days Out & Activities', photo: '/images/activities-hero.jpg' },
       { key: 'vouchers', icon: '🎟️', title: 'Vouchers & Offers', photo: '/images/vouchers-hero.jpg' },
+      { key: 'jobs', icon: '💼', title: 'Local Jobs' },
       { key: 'weatherDetails', icon: '🌤️', title: 'Weather Details', photo: '/images/weather-hero.jpg' },
       { key: 'traffic', icon: '🚗', title: 'Traffic', photo: '/images/traffic-hero.jpg' },
       { key: 'buses', icon: '🚌', title: 'Live Buses', photo: '/images/buses-hero.jpg' },
@@ -970,6 +972,7 @@
       if (key === 'directory') { renderDirectoryDetail(); return; }
       if (key === 'activities') { renderActivitiesDetail(); return; }
       if (key === 'vouchers') { renderVouchersDetail(); return; }
+      if (key === 'jobs') { renderJobsDetail(); return; }
 
       const renderers = {
         traffic: renderTrafficDetail,
@@ -2001,6 +2004,11 @@
           + (b.voucherExpiresAt ? ' — ends ' + formatVoucherDate(b.voucherExpiresAt) : '') + '</p>'
           + (b.voucherDescription ? '<p class="directory-row-desc">' + b.voucherDescription + '</p>' : '')
         : '';
+      const vacancyBlock = b.openRoles
+        ? '<p class="directory-row-meta" style="color: var(--accent-dark); font-weight:600;">💼 '
+          + b.openRoles + (b.openRoles === 1 ? ' role open' : ' roles open')
+          + ' — <a href="#" onclick="event.preventDefault(); closeDetail(); openDetail(\'jobs\');">see Local Jobs</a></p>'
+        : '';
       return '<div class="directory-row">'
         + '<div class="directory-row-top">'
         + '<div style="display:flex; align-items:center; gap:10px;">' + logo
@@ -2010,6 +2018,7 @@
         + '</div>'
         + (b.description ? '<p class="directory-row-desc">' + b.description + '</p>' : '')
         + voucherBlock
+        + vacancyBlock
         + (meta ? '<p class="directory-row-meta">' + meta + '</p>' : '')
         + ratingLine
         + (isExpanded ? renderReviewsPanel(b.id) : '')
@@ -2207,6 +2216,101 @@
         + '</div>';
     }
 
+    // ── Local Jobs — vacancies posted directly by businesses in the
+    // directory (routes/business.js's /api/business/vacancies), browsed
+    // publicly via routes/directory.js's GET /vacancies. Deliberately no
+    // category filter here, only keyword search — a business's own
+    // directory category (Food & Drink, Trades & Home Services, ...)
+    // doesn't map onto how someone searches for a job (see README).
+    let jobsFilters = { q: '' };
+
+    async function renderJobsDetail() {
+      const panel = document.getElementById('detailPanel');
+      const backBtn = '<button class="back-btn" onclick="closeDetail()">← Back</button>';
+      panel.innerHTML = backBtn + '<div class="card"><h2>💼 Local Jobs</h2><p class="unavailable">Loading…</p></div>';
+
+      let data;
+      try {
+        const params = new URLSearchParams();
+        if (jobsFilters.q) params.set('q', jobsFilters.q);
+        if (currentLocation) { params.set('lat', currentLocation.lat); params.set('lon', currentLocation.lon); }
+        const res = await fetch('/api/directory/vacancies?' + params.toString());
+        data = await res.json();
+      } catch (err) {
+        data = { configured: true, vacancies: [], error: err.message };
+      }
+
+      panel.innerHTML = backBtn + renderJobsCard(data);
+      const input = document.getElementById('jobsSearchInput');
+      if (input && document.activeElement !== input) {
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+    }
+
+    let jobsSearchTimer = null;
+    function onJobsSearchInput(value) {
+      jobsFilters.q = value;
+      clearTimeout(jobsSearchTimer);
+      jobsSearchTimer = setTimeout(renderJobsDetail, 350);
+    }
+
+    // A vacancy's "Apply" link is whichever the business gave — an email
+    // (mailto:) or their own application page — Cornwall Radar never
+    // collects the application itself (see business.js's
+    // validateVacancyInput: at least one of the two is always present).
+    function renderJobRow(v) {
+      const applyHref = v.applyUrl || (v.applyEmail ? 'mailto:' + v.applyEmail : null);
+      const applyLine = applyHref
+        ? '<a href="' + applyHref + '" target="_blank" rel="noopener" class="btn-secondary" style="display:inline-block; margin-top:6px;">Apply</a>'
+        : '';
+      const closingLine = v.expiresAt ? 'Closes ' + formatVoucherDate(v.expiresAt) : null;
+      const distLine = v.distanceKm != null ? v.distanceKm + 'km away' : null;
+      const meta = [distLine, closingLine].filter(Boolean).join(' · ');
+      const logo = v.businessLogoUrl ? '<img src="' + v.businessLogoUrl + '" alt="" class="directory-row-logo" />' : '';
+      return '<div class="directory-row">'
+        + '<div class="directory-row-top">'
+        + '<div style="display:flex; align-items:center; gap:10px;">' + logo
+        + '<div><div class="directory-row-name">' + v.title + '</div>'
+        + '<div class="directory-row-category">' + v.businessName + (v.postcode ? ' · ' + v.postcode : '') + '</div></div></div>'
+        + '</div>'
+        + (v.description ? '<p class="directory-row-desc">' + v.description + '</p>' : '')
+        + (meta ? '<p class="directory-row-meta">' + meta + '</p>' : '')
+        + applyLine
+        + '</div>';
+    }
+
+    function renderJobsCard(data) {
+      const searchBar = '<div class="directory-search-bar">'
+        + '<input type="text" id="jobsSearchInput" placeholder="Search job titles…" value="'
+        + (jobsFilters.q || '').replace(/"/g, '&quot;') + '" oninput="onJobsSearchInput(this.value)" />'
+        + '</div>';
+
+      const vacancies = (data && data.vacancies) || [];
+
+      let body;
+      if (data && data.configured === false) {
+        body = '<p class="unavailable">' + (data.message || 'Not set up yet') + '</p>';
+      } else if (data && data.error) {
+        body = '<p class="unavailable">Could not load jobs right now.</p>';
+      } else if (!vacancies.length) {
+        body = '<p class="account-note">No roles listed right now' + (jobsFilters.q ? ' matching that search.' : ' — check back soon.') + '</p>';
+      } else {
+        body = vacancies.map(renderJobRow).join('');
+      }
+
+      return '<div class="card"><h2>💼 Local Jobs</h2>'
+        + '<p class="section-subtitle">Roles posted directly by businesses in the Cornwall Radar directory — apply straight through to them, we\'re not involved beyond that.</p>'
+        + searchBar
+        + body
+        + '</div>'
+        + '<div class="card">'
+        + '<h2>📋 Own a local business?</h2>'
+        + '<p class="account-note">Add a vacancy to your listing for free, from the account panel — any category, as many roles as you like.</p>'
+        + '<button class="btn-primary" onclick="closeDetail(); openAccountPanel();">Manage your listing</button>'
+        + '</div>';
+    }
+
     // ── Account panel (Phase 1.5: sign-in, saved locations, morning
     // digest, billing) — a separate top-level panel from #app/#detailPanel
     // above, since its data (who's signed in, their own locations) has
@@ -2221,6 +2325,7 @@
     let businessCategories = []; // last-fetched fixed category list, for the listing form's dropdown
     let passwordRecoveryMode = false; // true after arriving via a "reset your password" email link, until a new password is saved
     let businessReviews = [];    // last-fetched /api/business/reviews payload, for the account panel's "your listing" reply UI
+    let businessVacancies = []; // last-fetched /api/business/vacancies payload, for the account panel's "your vacancies" list
     let expandedReviewsFor = null; // businessId of the one directory row currently showing its reviews panel, or null
     let reviewsCache = {};       // businessId -> { reviews, avgRating, reviewCount, myReview, isSignedIn }, filled by loadReviewsFor
     let adminBusinesses = null;  // last-fetched /api/admin/businesses payload, or null if this account isn't the admin (403) — see renderAdminCard
@@ -2394,12 +2499,13 @@
         // here into `null`, which is how renderAdminCard tells "not an
         // admin, don't show this card at all" apart from "admin, but
         // nothing to moderate yet".
-        const [account, businessResp, categories, factorsResp, reviewsResp, adminBusinessesResp, adminReviewsResp, alertsResp] = await Promise.all([
+        const [account, businessResp, categories, factorsResp, reviewsResp, vacanciesResp, adminBusinessesResp, adminReviewsResp, alertsResp] = await Promise.all([
           authedFetch('/api/account/me'),
           authedFetch('/api/business/me').catch(() => ({ business: null })),
           getBusinessCategories(),
           sb.auth.mfa.listFactors().catch(() => ({ data: { totp: [] } })),
           authedFetch('/api/business/reviews').catch(() => ({ reviews: [] })),
+          authedFetch('/api/business/vacancies').catch(() => ({ vacancies: [] })),
           authedFetch('/api/admin/businesses').catch(() => null),
           authedFetch('/api/admin/reviews').catch(() => null),
           authedFetch('/api/alerts').catch(() => ({ preferences: [] })),
@@ -2408,11 +2514,12 @@
         businessData = businessResp.business;
         businessCategories = categories;
         businessReviews = reviewsResp.reviews || [];
+        businessVacancies = vacanciesResp.vacancies || [];
         adminBusinesses = adminBusinessesResp ? adminBusinessesResp.businesses : null;
         adminReviews = adminReviewsResp ? adminReviewsResp.reviews : null;
         alertPreferences = alertsResp.preferences || [];
         const mfaFactors = (factorsResp && factorsResp.data && factorsResp.data.totp) || [];
-        panel.innerHTML = backBtn + msgSlot + renderAccountCards(accountData, renderMfaCard(mfaFactors)) + renderBusinessCards(businessData, businessReviews) + renderAdminCard(adminBusinesses, adminReviews) + renderDangerZoneCard();
+        panel.innerHTML = backBtn + msgSlot + renderAccountCards(accountData, renderMfaCard(mfaFactors)) + renderBusinessCards(businessData, businessReviews, businessVacancies) + renderAdminCard(adminBusinesses, adminReviews) + renderDangerZoneCard();
       } catch (err) {
         panel.innerHTML = backBtn + msgSlot + '<div class="card"><p class="account-error">' + err.message + '</p></div>';
       }
@@ -3080,7 +3187,7 @@
     // ── Business directory: manage YOUR OWN listing (see routes/business.js).
     // Same signed-in session as the rest of this panel — a person can be a
     // consumer, a business, or both, with one login.
-    function renderBusinessCards(business, reviews) {
+    function renderBusinessCards(business, reviews, vacancies) {
       const badgeClass = business ? (business.subscription_status || 'free') : 'free';
       const badgeLabel = business && business.subscription_status === 'active' ? 'Featured'
         : business && business.subscription_status === 'past_due' ? 'Past due'
@@ -3139,7 +3246,134 @@
         + (business ? ' ' + billingBtn + removeBtn : '')
         + '<div id="businessStatusMsg"></div>'
         + '</div>'
+        + (business ? renderVacanciesCard(vacancies || []) : '')
         + (business ? renderOwnerReviewsCard(reviews || []) : '');
+    }
+
+    // A business can have several open vacancies at once (unlike the single
+    // voucher above), so — same shape as the reviews-reply UI below — this
+    // is a list plus one reusable add/edit form, rather than fields baked
+    // into the main listing form. `editingVacancyId` is null while adding a
+    // new vacancy, or the id of the one being edited; vacanciesById caches
+    // the raw rows from the last render so editVacancy can prefill the form
+    // without re-parsing rendered HTML.
+    let vacanciesById = {};
+    let editingVacancyId = null;
+
+    function renderVacanciesCard(vacancies) {
+      vacanciesById = {};
+      vacancies.forEach((v) => { vacanciesById[v.id] = v; });
+      const todayKey = new Date().toISOString().slice(0, 10);
+
+      const rows = vacancies.map((v) => {
+        const isClosed = v.expires_at && v.expires_at < todayKey;
+        const applyText = v.apply_url ? v.apply_url : (v.apply_email || '');
+        const closingLine = v.expires_at
+          ? (isClosed ? 'Closed ' + formatVoucherDate(v.expires_at) : 'Closes ' + formatVoucherDate(v.expires_at))
+          : 'No closing date';
+        return '<div class="review-row" id="vacancyRow-' + v.id + '">'
+          + '<div class="review-row-top"><span><strong>' + v.title + '</strong></span>'
+          + '<span class="review-row-date">' + closingLine + '</span></div>'
+          + (v.description ? '<p class="review-row-comment">' + v.description + '</p>' : '')
+          + '<p class="review-row-comment">Apply via: ' + applyText + '</p>'
+          + '<button class="btn-secondary" onclick="editVacancy(\'' + v.id + '\')">Edit</button>'
+          + ' <button class="btn-secondary" style="margin-left:8px;" onclick="removeVacancy(\'' + v.id + '\')">Remove</button>'
+          + '<div id="vacancyStatus-' + v.id + '"></div>'
+          + '</div>';
+      }).join('');
+
+      const listBlock = vacancies.length ? rows : '<p class="account-note">No vacancies listed yet.</p>';
+
+      // The form is always in the DOM (hidden by default) rather than only
+      // rendered on demand — same "toggle hidden" approach as the review
+      // reply form — so showAddVacancyForm/editVacancy just fill fields and
+      // un-hide it instead of managing raw HTML strings.
+      const formBlock = '<div class="review-form" id="vacancyFormBlock" hidden>'
+        + '<div class="account-field"><label>Job title</label><input type="text" id="vacTitle" placeholder="e.g. Kitchen Porter" /></div>'
+        + '<div class="account-field"><label>Description (optional)</label><input type="text" id="vacDescription" placeholder="Hours, pay, what the role involves" /></div>'
+        + '<div class="account-field"><label>Apply by email (optional)</label><input type="text" id="vacApplyEmail" placeholder="jobs@yourbusiness.co.uk" /></div>'
+        + '<div class="account-field"><label>Or a link to apply (optional)</label><input type="text" id="vacApplyUrl" placeholder="yourbusiness.co.uk/careers" />'
+        + '<p class="account-note">At least one of email or link is needed — that\'s all a visitor sees, we don\'t collect applications ourselves.</p></div>'
+        + '<div class="account-field"><label>Closing date (optional)</label><input type="date" id="vacExpiresAt" /></div>'
+        + '<button class="btn-primary" onclick="saveVacancy()">Save vacancy</button>'
+        + ' <button class="btn-secondary" style="margin-left:8px;" onclick="cancelVacancyForm()">Cancel</button>'
+        + '<div id="vacancyFormStatus"></div>'
+        + '</div>';
+
+      return '<div class="card"><h2>💼 Vacancies</h2>'
+        + '<p class="account-note">Shown on the Local Jobs page and as a badge on your listing. Add as many as you like — each closes on its own date, or runs indefinitely.</p>'
+        + listBlock
+        + formBlock
+        + '<button class="btn-secondary" id="addVacancyBtn" style="margin-top:10px;" onclick="showAddVacancyForm()">+ Add a vacancy</button>'
+        + '</div>';
+    }
+
+    function showAddVacancyForm() {
+      editingVacancyId = null;
+      document.getElementById('vacTitle').value = '';
+      document.getElementById('vacDescription').value = '';
+      document.getElementById('vacApplyEmail').value = '';
+      document.getElementById('vacApplyUrl').value = '';
+      document.getElementById('vacExpiresAt').value = '';
+      document.getElementById('vacancyFormStatus').innerHTML = '';
+      document.getElementById('vacancyFormBlock').hidden = false;
+      document.getElementById('addVacancyBtn').hidden = true;
+      document.getElementById('vacTitle').focus();
+    }
+
+    function editVacancy(id) {
+      const v = vacanciesById[id];
+      if (!v) return;
+      editingVacancyId = id;
+      document.getElementById('vacTitle').value = v.title || '';
+      document.getElementById('vacDescription').value = v.description || '';
+      document.getElementById('vacApplyEmail').value = v.apply_email || '';
+      document.getElementById('vacApplyUrl').value = v.apply_url || '';
+      document.getElementById('vacExpiresAt').value = v.expires_at || '';
+      document.getElementById('vacancyFormStatus').innerHTML = '';
+      document.getElementById('vacancyFormBlock').hidden = false;
+      document.getElementById('addVacancyBtn').hidden = true;
+      document.getElementById('vacancyFormBlock').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function cancelVacancyForm() {
+      editingVacancyId = null;
+      document.getElementById('vacancyFormBlock').hidden = true;
+      document.getElementById('addVacancyBtn').hidden = false;
+    }
+
+    async function saveVacancy() {
+      const title = document.getElementById('vacTitle').value.trim();
+      const description = document.getElementById('vacDescription').value.trim();
+      const applyEmail = document.getElementById('vacApplyEmail').value.trim();
+      const applyUrl = document.getElementById('vacApplyUrl').value.trim();
+      const expiresAt = document.getElementById('vacExpiresAt').value.trim();
+      const status = document.getElementById('vacancyFormStatus');
+      if (!title) { status.innerHTML = '<p class="account-error">A job title is required</p>'; return; }
+      if (!applyEmail && !applyUrl) { status.innerHTML = '<p class="account-error">Add an email address or a link for people to apply</p>'; return; }
+      status.innerHTML = '<p class="account-note">Saving…</p>';
+      try {
+        const body = JSON.stringify({ title, description, applyEmail, applyUrl, expiresAt });
+        if (editingVacancyId) {
+          await authedFetch('/api/business/vacancies/' + editingVacancyId, { method: 'PUT', body });
+        } else {
+          await authedFetch('/api/business/vacancies', { method: 'POST', body });
+        }
+        renderAccountPanel();
+      } catch (err) {
+        status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
+    }
+
+    async function removeVacancy(id) {
+      if (!confirm('Remove this vacancy?')) return;
+      const status = document.getElementById('vacancyStatus-' + id);
+      try {
+        await authedFetch('/api/business/vacancies/' + id, { method: 'DELETE' });
+        renderAccountPanel();
+      } catch (err) {
+        if (status) status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
     }
 
     // Reviews on the signed-in business's own listing — read-only for the

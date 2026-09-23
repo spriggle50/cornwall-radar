@@ -124,6 +124,19 @@ router.get('/', async (req, res) => {
     const userLon = lon != null ? parseFloat(lon) : null;
     const todayKey = new Date().toISOString().slice(0, 10);
 
+    // "N roles open" badge on the directory row — same not-expired rule as
+    // vouchers, counted per business rather than fetched in full here (the
+    // full list is GET /vacancies below, for the dedicated Local Jobs page).
+    const { data: vacancyRows } = businessIds.length
+      ? await supabaseAdmin.from('business_vacancies').select('business_id, expires_at').in('business_id', businessIds)
+      : { data: [] };
+    const openRolesByBusiness = {};
+    for (const v of (vacancyRows || [])) {
+      if (!v.expires_at || v.expires_at >= todayKey) {
+        openRolesByBusiness[v.business_id] = (openRolesByBusiness[v.business_id] || 0) + 1;
+      }
+    }
+
     const businesses = (data || []).map(({ subscription_status, voucher_title, voucher_description, voucher_expires_at, ...b }) => {
       // Same "not expired" rule as the ?voucher=1 filter above, applied here
       // too so a lapsed voucher never shows as a badge on an ordinary
@@ -142,6 +155,7 @@ router.get('/', async (req, res) => {
         voucherTitle: voucherActive ? voucher_title : null,
         voucherDescription: voucherActive ? voucher_description : null,
         voucherExpiresAt: voucherActive ? voucher_expires_at : null,
+        openRoles: openRolesByBusiness[b.id] || 0,
       };
     });
 
@@ -205,6 +219,87 @@ router.get('/sponsored', async (req, res) => {
   } catch (err) {
     console.error('[directory] sponsored failed:', err.message);
     res.status(500).json({ error: 'Sponsored businesses temporarily unavailable' });
+  }
+});
+
+// GET /api/directory/vacancies — public list of every OPEN vacancy across
+// every business, for the "Local Jobs" page. Business details (name,
+// category, logo, location) are fetched in a second query and merged here
+// in JS — same "no embedded joins" style as aggregateRatings above — rather
+// than every business's vacancies. `q` is a plain keyword search across the
+// vacancy's own title/description, word-by-word same as the main listing
+// search; deliberately no category filter (see README) — a business's own
+// directory category doesn't map onto how someone searches for a job.
+router.get('/vacancies', async (req, res) => {
+  if (!supabaseConfigured()) {
+    return res.json({ configured: false, vacancies: [] });
+  }
+
+  try {
+    const { q, lat, lon } = req.query;
+    const todayKey = new Date().toISOString().slice(0, 10);
+
+    let query = supabaseAdmin
+      .from('business_vacancies')
+      .select('id, business_id, title, description, apply_email, apply_url, expires_at, created_at')
+      .or(`expires_at.is.null,expires_at.gte.${todayKey}`);
+
+    if (q && q.trim()) {
+      const words = q.trim().split(/\s+/).filter(Boolean).slice(0, 6);
+      for (const word of words) {
+        const cleaned = word.replace(/[,()%*]/g, '');
+        if (!cleaned) continue;
+        const term = `%${cleaned}%`;
+        query = query.or(`title.ilike.${term},description.ilike.${term}`);
+      }
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+
+    const vacancyRows = data || [];
+    const businessIds = [...new Set(vacancyRows.map((v) => v.business_id))];
+    const { data: businessRows } = businessIds.length
+      ? await supabaseAdmin.from('businesses').select('id, name, category, logo_url, postcode, lat, lng').in('id', businessIds)
+      : { data: [] };
+    const businessById = {};
+    for (const b of (businessRows || [])) businessById[b.id] = b;
+
+    const userLat = lat != null ? parseFloat(lat) : null;
+    const userLon = lon != null ? parseFloat(lon) : null;
+
+    const vacancies = vacancyRows
+      // A removed listing shouldn't leave its old vacancies surfacing —
+      // `on delete cascade` normally prevents this anyway, but skipping any
+      // orphan defensively costs nothing.
+      .filter((v) => businessById[v.business_id])
+      .map(({ business_id, apply_email, apply_url, expires_at, ...v }) => {
+        const biz = businessById[business_id];
+        return {
+          ...v,
+          applyEmail: apply_email,
+          applyUrl: apply_url,
+          expiresAt: expires_at,
+          businessId: business_id,
+          businessName: biz.name,
+          businessCategory: biz.category,
+          businessLogoUrl: biz.logo_url,
+          postcode: biz.postcode,
+          distanceKm: (userLat != null && userLon != null && biz.lat != null && biz.lng != null)
+            ? Math.round(distanceKm(userLat, userLon, biz.lat, biz.lng) * 10) / 10
+            : null,
+        };
+      });
+
+    vacancies.sort((a, b) => {
+      if (a.distanceKm != null && b.distanceKm != null) return a.distanceKm - b.distanceKm;
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+
+    res.json({ configured: true, vacancies, generatedAt: new Date().toISOString() });
+  } catch (err) {
+    console.error('[directory] vacancies failed:', err.message);
+    res.status(500).json({ error: 'Vacancies temporarily unavailable' });
   }
 });
 
