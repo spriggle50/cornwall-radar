@@ -479,6 +479,21 @@
       letter-spacing: 0.04em; padding: 3px 9px; border-radius: 999px; background: #fff2cc; color: #9a6b00;
       white-space: nowrap; flex-shrink: 0;
     }
+    /* Local Jobs: a business-posted role vs one pulled in from Adzuna need to
+       be unmistakable at a glance, not just a subtle label — hence a colour-
+       coded badge on every row AND the two are grouped under their own
+       subheading (see renderJobsCard) rather than interleaved by date. */
+    .job-source-badge {
+      display: inline-block; font-size: 0.62rem; font-weight: 800; text-transform: uppercase;
+      letter-spacing: 0.03em; padding: 2px 8px; border-radius: 999px; white-space: nowrap; margin-left: 6px;
+    }
+    .job-source-badge.local { background: var(--accent-soft); color: var(--accent-dark); }
+    .job-source-badge.external { background: #eef1f0; color: var(--text-3); }
+    .jobs-group-heading {
+      font-size: 0.78rem; font-weight: 700; color: var(--text-3); text-transform: uppercase;
+      letter-spacing: 0.03em; margin: 18px 0 8px; padding-top: 12px; border-top: 1px solid var(--border);
+    }
+    .jobs-group-heading:first-of-type { margin-top: 4px; padding-top: 0; border-top: none; }
     .review-toggle-link { text-decoration: none; font-weight: 600; }
     .review-toggle-link:hover { text-decoration: underline; }
 
@@ -2276,8 +2291,8 @@
       const meta = [distLine, closingLine].filter(Boolean).join(' · ');
       const logo = v.businessLogoUrl ? '<img src="' + v.businessLogoUrl + '" alt="" class="directory-row-logo" />' : '';
       const sourceTag = isExternal
-        ? '<span style="font-size:0.68rem; font-weight:600; color: var(--text-3); border:1px solid var(--border); border-radius:999px; padding:1px 8px; margin-left:6px; white-space:nowrap;">via Adzuna</span>'
-        : '';
+        ? '<span class="job-source-badge external">Via Adzuna</span>'
+        : '<span class="job-source-badge local">🏪 Local business</span>';
       return '<div class="directory-row">'
         + '<div class="directory-row-top">'
         + '<div style="display:flex; align-items:center; gap:10px;">' + logo
@@ -2297,6 +2312,11 @@
         + '</div>';
 
       const vacancies = (data && data.vacancies) || [];
+      // Grouped into two clearly-labelled blocks rather than one interleaved
+      // list — a business-posted role and an Adzuna one are never mixed
+      // together unlabelled, on top of each row's own colour-coded badge.
+      const localJobs = vacancies.filter((v) => v.source !== 'external');
+      const externalJobs = vacancies.filter((v) => v.source === 'external');
 
       let body;
       if (data && data.configured === false) {
@@ -2306,7 +2326,9 @@
       } else if (!vacancies.length) {
         body = '<p class="account-note">No roles listed right now' + (jobsFilters.q ? ' matching that search.' : ' — check back soon.') + '</p>';
       } else {
-        body = vacancies.map(renderJobRow).join('');
+        body = ''
+          + (localJobs.length ? '<div class="jobs-group-heading">🏪 Posted directly by Cornwall Radar businesses</div>' + localJobs.map(renderJobRow).join('') : '')
+          + (externalJobs.length ? '<div class="jobs-group-heading">🌐 More vacancies from around Cornwall — via Adzuna</div>' + externalJobs.map(renderJobRow).join('') : '');
       }
 
       return '<div class="card"><h2>💼 Local Jobs</h2>'
