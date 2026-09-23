@@ -185,7 +185,16 @@ filter dropdown, since they all read from the same shared category list.
   business gave. Open vacancies show as an "N roles open" badge on the
   business's directory row, and on a dedicated "Local Jobs" page (search by
   keyword, no category — a business's own categories don't map onto how
-  people search for a job).
+  people search for a job). The Local Jobs page also tops itself up with a
+  live feed of wider Cornwall vacancies from Adzuna (`fetchers/adzuna.js`) —
+  business-posted roles always sort first (they're free, direct, and this
+  site's own differentiator), with Adzuna's results filling in underneath,
+  tagged "via Adzuna" so they're never mistaken for one of the site's own
+  listings. Optional: needs `ADZUNA_APP_ID`/`ADZUNA_APP_KEY` in `.env` (free
+  registration at developer.adzuna.com) — leave blank and the page still
+  works fine with just the business-posted roles. Untested against a live
+  Adzuna response from this environment, same caveat as this project's other
+  fetchers — check it works once deployed.
 
 **Needs one new table before this works** — run this once in the Supabase
 SQL editor (also folded into `schema.sql` for any future fresh install):

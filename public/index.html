@@ -919,7 +919,7 @@
       { key: 'directory', icon: '🏪', title: 'Business Directory' },
       { key: 'activities', icon: '🎡', title: 'Days Out & Activities', photo: '/images/activities-hero.jpg' },
       { key: 'vouchers', icon: '🎟️', title: 'Vouchers & Offers', photo: '/images/vouchers-hero.jpg' },
-      { key: 'jobs', icon: '💼', title: 'Local Jobs' },
+      { key: 'jobs', icon: '💼', title: 'Local Jobs', photo: '/images/jobs-hero.jpg' },
       { key: 'weatherDetails', icon: '🌤️', title: 'Weather Details', photo: '/images/weather-hero.jpg' },
       { key: 'traffic', icon: '🚗', title: 'Traffic', photo: '/images/traffic-hero.jpg' },
       { key: 'buses', icon: '🚌', title: 'Live Buses', photo: '/images/buses-hero.jpg' },
@@ -2259,7 +2259,14 @@
     // (mailto:) or their own application page — Cornwall Radar never
     // collects the application itself (see business.js's
     // validateVacancyInput: at least one of the two is always present).
+    // `source` distinguishes a role posted directly by a Cornwall Radar
+    // business from one pulled in live from Adzuna's wider Cornwall jobs
+    // feed (routes/directory.js) — an external one has no logo/postcode/
+    // distance of its own, just whatever location string Adzuna gave, and
+    // gets a small "via Adzuna" tag so it's never mistaken for a directory
+    // listing's own posting.
     function renderJobRow(v) {
+      const isExternal = v.source === 'external';
       const applyHref = v.applyUrl || (v.applyEmail ? 'mailto:' + v.applyEmail : null);
       const applyLine = applyHref
         ? '<a href="' + applyHref + '" target="_blank" rel="noopener" class="btn-secondary" style="display:inline-block; margin-top:6px;">Apply</a>'
@@ -2268,10 +2275,13 @@
       const distLine = v.distanceKm != null ? v.distanceKm + 'km away' : null;
       const meta = [distLine, closingLine].filter(Boolean).join(' · ');
       const logo = v.businessLogoUrl ? '<img src="' + v.businessLogoUrl + '" alt="" class="directory-row-logo" />' : '';
+      const sourceTag = isExternal
+        ? '<span style="font-size:0.68rem; font-weight:600; color: var(--text-3); border:1px solid var(--border); border-radius:999px; padding:1px 8px; margin-left:6px; white-space:nowrap;">via Adzuna</span>'
+        : '';
       return '<div class="directory-row">'
         + '<div class="directory-row-top">'
         + '<div style="display:flex; align-items:center; gap:10px;">' + logo
-        + '<div><div class="directory-row-name">' + v.title + '</div>'
+        + '<div><div class="directory-row-name">' + v.title + sourceTag + '</div>'
         + '<div class="directory-row-category">' + v.businessName + (v.postcode ? ' · ' + v.postcode : '') + '</div></div></div>'
         + '</div>'
         + (v.description ? '<p class="directory-row-desc">' + v.description + '</p>' : '')
@@ -2300,13 +2310,13 @@
       }
 
       return '<div class="card"><h2>💼 Local Jobs</h2>'
-        + '<p class="section-subtitle">Roles posted directly by businesses in the Cornwall Radar directory — apply straight through to them, we\'re not involved beyond that.</p>'
+        + '<p class="section-subtitle">Roles posted directly by businesses in the Cornwall Radar directory, topped up with wider Cornwall vacancies — apply straight through to whoever\'s hiring, we\'re not involved beyond that.</p>'
         + searchBar
         + body
         + '</div>'
         + '<div class="card">'
         + '<h2>📋 Own a local business?</h2>'
-        + '<p class="account-note">Add a vacancy to your listing for free, from the account panel — any category, as many roles as you like.</p>'
+        + '<p class="account-note">Add a vacancy to your listing for free, from the account panel — any category, as many roles as you like, and it\'s shown ahead of the wider listings above.</p>'
         + '<button class="btn-primary" onclick="closeDetail(); openAccountPanel();">Manage your listing</button>'
         + '</div>';
     }

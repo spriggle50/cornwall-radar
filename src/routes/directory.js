@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const { supabaseAdmin, isConfigured: supabaseConfigured } = require('../lib/supabaseClient');
 const { BUSINESS_CATEGORIES } = require('../lib/businessCategories');
+const { getExternalJobs } = require('../fetchers/adzuna');
 
 // Same haversine approach as the rest of the project's distance-based
 // sorting (e.g. cornwallTowns.js's nearestTown) — plain lat/lon great-circle
@@ -222,21 +223,60 @@ router.get('/sponsored', async (req, res) => {
   }
 });
 
-// GET /api/directory/vacancies — public list of every OPEN vacancy across
-// every business, for the "Local Jobs" page. Business details (name,
-// category, logo, location) are fetched in a second query and merged here
-// in JS — same "no embedded joins" style as aggregateRatings above — rather
-// than every business's vacancies. `q` is a plain keyword search across the
-// vacancy's own title/description, word-by-word same as the main listing
-// search; deliberately no category filter (see README) — a business's own
-// directory category doesn't map onto how someone searches for a job.
+// Turns one Adzuna result (see fetchers/adzuna.js) into the same shape as a
+// business-posted vacancy from the block below, so the frontend can render
+// both with one renderJobRow() and doesn't need to know two different
+// object shapes exist. `source: 'external'` is what lets it show "via
+// Adzuna · <company>" instead of a Cornwall Radar business's own name/logo.
+function mapExternalJob(job) {
+  return {
+    id: job.id,
+    title: job.title,
+    description: job.description,
+    applyEmail: null,
+    applyUrl: job.applyUrl,
+    expiresAt: null,
+    businessId: null,
+    businessName: job.companyName,
+    businessCategory: null,
+    businessLogoUrl: null,
+    postcode: job.location,
+    distanceKm: null,
+    createdAt: job.createdAt,
+    source: 'external',
+  };
+}
+
+// GET /api/directory/vacancies — public list of open roles for the "Local
+// Jobs" page: every OPEN business-posted vacancy (business_vacancies),
+// PLUS a live top-up of outside listings from Adzuna's Cornwall-wide jobs
+// feed (fetchers/adzuna.js) so the page isn't limited to only the handful
+// of businesses that have listed on Cornwall Radar itself. Business-posted
+// roles always sort first — they're free, direct, and this site's own
+// differentiator — with Adzuna's results filling in underneath, newest
+// first. Business details (name, category, logo, location) are fetched in
+// a second query and merged here in JS — same "no embedded joins" style as
+// aggregateRatings above — rather than every business's vacancies. `q` is a
+// plain keyword search across the vacancy's own title/description (and is
+// passed straight through to Adzuna's own `what` search too), word-by-word
+// same as the main listing search; deliberately no category filter (see
+// README) — a business's own directory category doesn't map onto how
+// someone searches for a job.
 router.get('/vacancies', async (req, res) => {
+  const { q, lat, lon } = req.query;
+
   if (!supabaseConfigured()) {
-    return res.json({ configured: false, vacancies: [] });
+    const external = await getExternalJobs({ q });
+    return res.json({
+      configured: true,
+      vacancies: external.jobs.map(mapExternalJob),
+      externalJobsConfigured: external.configured,
+      externalJobsNote: external.message || external.error || null,
+      generatedAt: new Date().toISOString(),
+    });
   }
 
   try {
-    const { q, lat, lon } = req.query;
     const todayKey = new Date().toISOString().slice(0, 10);
 
     let query = supabaseAdmin
@@ -254,7 +294,13 @@ router.get('/vacancies', async (req, res) => {
       }
     }
 
-    const { data, error } = await query.order('created_at', { ascending: false });
+    // Fetched alongside the business-posted vacancies, not after — Adzuna's
+    // own round trip shouldn't add its latency on top of Supabase's rather
+    // than instead of it.
+    const [{ data, error }, external] = await Promise.all([
+      query.order('created_at', { ascending: false }),
+      getExternalJobs({ q }),
+    ]);
     if (error) throw new Error(error.message);
 
     const vacancyRows = data || [];
@@ -288,6 +334,7 @@ router.get('/vacancies', async (req, res) => {
           distanceKm: (userLat != null && userLon != null && biz.lat != null && biz.lng != null)
             ? Math.round(distanceKm(userLat, userLon, biz.lat, biz.lng) * 10) / 10
             : null,
+          source: 'business',
         };
       });
 
@@ -296,7 +343,19 @@ router.get('/vacancies', async (req, res) => {
       return new Date(b.created_at) - new Date(a.created_at);
     });
 
-    res.json({ configured: true, vacancies, generatedAt: new Date().toISOString() });
+    // Adzuna's results fill in underneath the business-posted ones — those
+    // are free, direct, and this site's own differentiator, so they always
+    // get top billing regardless of distance/date.
+    const externalJobs = external.jobs.map(mapExternalJob);
+    externalJobs.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+    res.json({
+      configured: true,
+      vacancies: [...vacancies, ...externalJobs],
+      externalJobsConfigured: external.configured,
+      externalJobsNote: external.message || external.error || null,
+      generatedAt: new Date().toISOString(),
+    });
   } catch (err) {
     console.error('[directory] vacancies failed:', err.message);
     res.status(500).json({ error: 'Vacancies temporarily unavailable' });
