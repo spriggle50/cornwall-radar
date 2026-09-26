@@ -64,8 +64,13 @@ function categoryPath(category) {
 // nothing loaded from index.html's own giant embedded one) since these
 // pages are meant to render fully and instantly with zero JavaScript,
 // unlike the main app.
-function pageShell({ title, description, canonicalPath, jsonLd, bodyHtml }) {
+function pageShell({ title, description, canonicalPath, jsonLd, bodyHtml, ogImage }) {
   const canonicalUrl = `${SITE_URL}${canonicalPath}`;
+  // A business's own page shares ITS logo (see the business-page route
+  // below), so pasting that link into Facebook/WhatsApp/etc. previews the
+  // actual business, not the generic Cornwall Radar icon every other page
+  // here falls back to.
+  const imageUrl = ogImage || `${SITE_URL}/brand/icon-512.png`;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -78,7 +83,7 @@ function pageShell({ title, description, canonicalPath, jsonLd, bodyHtml }) {
 <meta property="og:title" content="${escHtml(title)}" />
 <meta property="og:description" content="${escHtml(description)}" />
 <meta property="og:url" content="${canonicalUrl}" />
-<meta property="og:image" content="${SITE_URL}/brand/icon-512.png" />
+<meta property="og:image" content="${imageUrl}" />
 <meta name="twitter:card" content="summary" />
 <link rel="icon" href="/brand/icon-96.png" />
 ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>` : ''}
@@ -99,13 +104,17 @@ ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script
   .cat-nav { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 24px; padding:0; list-style:none; }
   .cat-nav a { display:inline-block; font-size:0.82rem; background:#fff; border:1px solid var(--border); border-radius:999px; padding:5px 12px; text-decoration:none; color:var(--text-2); }
   .cat-nav a.active { background:var(--accent); color:#fff; border-color:var(--accent); }
-  .listing { background:#fff; border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:10px; }
+  .listing { background:#fff; border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:10px; display:flex; gap:12px; align-items:flex-start; }
+  .listing-logo { width:44px; height:44px; border-radius:8px; object-fit:cover; flex-shrink:0; border:1px solid var(--border); background:#fff; }
+  .listing-body { min-width:0; flex:1; }
   .listing h3 { margin:0 0 2px; font-size:1.02rem; }
   .listing h3 a { color:var(--text); text-decoration:none; }
   .listing .meta { color:var(--text-3); font-size:0.8rem; margin-bottom:6px; }
   .listing p { margin:6px 0; color:var(--text-2); font-size:0.92rem; }
   .featured-tag { display:inline-block; font-size:0.62rem; font-weight:800; text-transform:uppercase; background:#fff2cc; color:#9a6b00; padding:2px 8px; border-radius:999px; margin-left:6px; vertical-align:middle; }
   .btn-line a { display:inline-block; margin:10px 10px 0 0; font-weight:600; }
+  .biz-header { display:flex; gap:16px; align-items:center; margin-bottom:4px; }
+  .biz-logo { width:72px; height:72px; border-radius:12px; object-fit:cover; flex-shrink:0; border:1px solid var(--border); background:#fff; }
   footer.site-footer { text-align:center; color:var(--text-3); font-size:0.8rem; padding:24px 20px 40px; }
   footer.site-footer a { color:var(--text-3); }
   .breadcrumbs { font-size:0.8rem; color:var(--text-3); margin-bottom:14px; }
@@ -148,10 +157,19 @@ function categoryNav(activeCategory) {
 
 function renderListingHtml(b) {
   const featuredTag = b.subscription_status === 'active' ? '<span class="featured-tag">★ Featured</span>' : '';
+  // A plain grey square instead of an <img> at all when there's no logo —
+  // no broken-image icon, and it keeps every row the same height whether or
+  // not that business has uploaded one.
+  const logo = b.logo_url
+    ? `<img class="listing-logo" src="${escHtml(b.logo_url)}" alt="" loading="lazy" />`
+    : `<div class="listing-logo" aria-hidden="true"></div>`;
   return `<div class="listing">
-    <h3><a href="${businessPath(b)}">${escHtml(b.name)}</a>${featuredTag}</h3>
-    <div class="meta">${escHtml(b.category)}${b.postcode ? ' · ' + escHtml(b.postcode) : ''}</div>
-    ${b.description ? `<p>${escHtml(b.description)}</p>` : ''}
+    ${logo}
+    <div class="listing-body">
+      <h3><a href="${businessPath(b)}">${escHtml(b.name)}</a>${featuredTag}</h3>
+      <div class="meta">${escHtml(b.category)}${b.postcode ? ' · ' + escHtml(b.postcode) : ''}</div>
+      ${b.description ? `<p>${escHtml(b.description)}</p>` : ''}
+    </div>
   </div>`;
 }
 
@@ -174,7 +192,7 @@ router.get('/directory', async (req, res) => {
   try {
     let query = supabaseAdmin
       .from('businesses')
-      .select('id, name, category, description, postcode, subscription_status');
+      .select('id, name, category, description, postcode, logo_url, subscription_status');
     if (category) query = query.eq('category', category);
     const { data, error } = await query;
     if (error) throw new Error(error.message);
@@ -262,7 +280,7 @@ router.get('/directory/business/:id/:slug?', async (req, res) => {
   try {
     const { data: b, error } = await supabaseAdmin
       .from('businesses')
-      .select('id, name, category, description, phone, website, postcode, subscription_status')
+      .select('id, name, category, description, phone, website, postcode, logo_url, subscription_status')
       .eq('id', req.params.id)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -287,11 +305,17 @@ router.get('/directory/business/:id/:slug?', async (req, res) => {
     if (b.postcode) contactLines.push(`<p><strong>Location:</strong> ${escHtml(b.postcode)}, Cornwall</p>`);
 
     const featuredTag = b.subscription_status === 'active' ? '<span class="featured-tag">★ Featured</span>' : '';
+    const logo = b.logo_url ? `<img class="biz-logo" src="${escHtml(b.logo_url)}" alt="${escHtml(b.name)} logo" />` : '';
 
     const body = `
       <div class="breadcrumbs"><a href="/directory">Cornwall Business Directory</a> › <a href="${categoryPath(b.category)}">${escHtml(b.category)}</a> › ${escHtml(b.name)}</div>
-      <h1>${escHtml(b.name)}${featuredTag}</h1>
-      <p class="lede">${escHtml(b.category)} in Cornwall${b.postcode ? ' · ' + escHtml(b.postcode) : ''}</p>
+      <div class="biz-header">
+        ${logo}
+        <div>
+          <h1 style="margin-bottom:2px;">${escHtml(b.name)}${featuredTag}</h1>
+          <p class="lede" style="margin:0;">${escHtml(b.category)} in Cornwall${b.postcode ? ' · ' + escHtml(b.postcode) : ''}</p>
+        </div>
+      </div>
       ${b.description ? `<p>${escHtml(b.description)}</p>` : ''}
       ${contactLines.join('')}
       <div class="btn-line">
@@ -305,6 +329,7 @@ router.get('/directory/business/:id/:slug?', async (req, res) => {
       name: b.name,
       description: b.description || undefined,
       telephone: b.phone || undefined,
+      image: b.logo_url || undefined,
       url: b.website || `${SITE_URL}${businessPath(b)}`,
       address: {
         '@type': 'PostalAddress',
@@ -316,7 +341,7 @@ router.get('/directory/business/:id/:slug?', async (req, res) => {
     };
 
     res.set('Cache-Control', 'public, max-age=300');
-    res.send(pageShell({ title, description, canonicalPath: businessPath(b), jsonLd, bodyHtml: body }));
+    res.send(pageShell({ title, description, canonicalPath: businessPath(b), jsonLd, bodyHtml: body, ogImage: b.logo_url || undefined }));
   } catch (err) {
     console.error('[seoPages] business page failed:', err.message);
     res.status(500).send(pageShell({
