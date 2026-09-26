@@ -263,15 +263,16 @@ function mapExternalJob(job) {
 // README) — a business's own directory category doesn't map onto how
 // someone searches for a job.
 router.get('/vacancies', async (req, res) => {
-  const { q, lat, lon, externalPages } = req.query;
+  const { q, lat, lon, externalPage } = req.query;
 
   if (!supabaseConfigured()) {
-    const external = await getExternalJobs({ q, pages: externalPages });
+    const external = await getExternalJobs({ q, page: externalPage });
     return res.json({
       configured: true,
       vacancies: external.jobs.map(mapExternalJob),
       externalJobsConfigured: external.configured,
       externalJobsNote: external.message || external.error || null,
+      externalJobsPage: external.page,
       externalJobsHasMore: external.hasMore,
       generatedAt: new Date().toISOString(),
     });
@@ -300,7 +301,7 @@ router.get('/vacancies', async (req, res) => {
     // than instead of it.
     const [{ data, error }, external] = await Promise.all([
       query.order('created_at', { ascending: false }),
-      getExternalJobs({ q, pages: externalPages }),
+      getExternalJobs({ q, page: externalPage }),
     ]);
     if (error) throw new Error(error.message);
 
@@ -355,6 +356,7 @@ router.get('/vacancies', async (req, res) => {
       vacancies: [...vacancies, ...externalJobs],
       externalJobsConfigured: external.configured,
       externalJobsNote: external.message || external.error || null,
+      externalJobsPage: external.page,
       externalJobsHasMore: external.hasMore,
       generatedAt: new Date().toISOString(),
     });

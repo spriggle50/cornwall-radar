@@ -11,9 +11,9 @@
 //
 // A short in-memory cache (its own, not dashboardCache.js — that one's keyed
 // by lat/lon for the main dashboard, this is keyed by search term AND page
-// number) keeps repeated searches from burning through Adzuna's free-tier
-// call allowance every time someone opens the Local Jobs page, or clicks
-// "load more" on a page that's already been fetched by someone else recently.
+// number) keeps repeated page views from burning through Adzuna's free-tier
+// call allowance every time someone opens the Local Jobs page, or flips
+// between pages someone else has already fetched recently.
 
 const { fetchWithTimeout } = require('../lib/fetchWithTimeout');
 
@@ -23,15 +23,15 @@ const ADZUNA_BASE_URL = 'https://api.adzuna.com/v1/api/jobs/gb/search';
 
 // Adzuna caps a single page at 50 results, with further pages fetched via
 // separate requests to /search/2, /search/3, etc. — there's no single
-// "give me everything" parameter. DEFAULT_PAGES is what a first, unfiltered
-// visit to the Local Jobs page fetches (100 jobs); routes/directory.js can
-// ask for more via its own `pages` argument once someone clicks "load more"
-// there. MAX_PAGES is a hard ceiling so a "load more" button (or a stray
+// "give me everything" parameter, and no reliably-documented "total results"
+// field either, so this fetches and shows exactly ONE page per request —
+// matching Adzuna's own page-at-a-time model rather than trying to flatten
+// it into one long list. MAX_PAGE is a hard ceiling so paging (or a stray
 // crafted request) can't be used to fan this out into hundreds of calls —
-// 10 pages is already 500 jobs, far more than the page would sensibly show.
+// page 10 is already the 500th job, far more than anyone would page through.
 const RESULTS_PER_PAGE = 50;
-const DEFAULT_PAGES = 2;
-const MAX_PAGES = 10;
+const DEFAULT_PAGE = 1;
+const MAX_PAGE = 10;
 
 const TTL_MS = 15 * 60 * 1000; // 15 minutes — job ads don't turn over fast
 // enough to need anything shorter, and this is what keeps a busy day of
@@ -62,11 +62,9 @@ function buildUrl(term, page) {
   return `${ADZUNA_BASE_URL}/${page}?${params.toString()}`;
 }
 
-// Fetches (or serves from cache) exactly one page of results — cached
-// individually rather than as part of one big "pages 1 through N" blob, so
-// asking for more pages later (a "load more" click going from 2 pages to 4)
-// only ever fetches the two NEW pages, never re-requests the ones already
-// held from a moment ago.
+// Fetches (or serves from cache) exactly one page of results. Cached
+// per-page so flicking back to a page already seen this session (or fetched
+// by someone else recently) never re-hits Adzuna for it.
 async function fetchPage(term, page) {
   const cacheKey = `${term.toLowerCase()}|${page}`;
   const cached = cache.get(cacheKey);
@@ -93,70 +91,49 @@ async function fetchPage(term, page) {
   return entry;
 }
 
-// `pages` — how many pages (from page 1) to fetch and merge this time.
-// routes/directory.js passes a growing number as someone clicks "load more"
-// on the Local Jobs page; left at its default for a first, unfiltered load.
-async function getExternalJobs({ q, pages = DEFAULT_PAGES } = {}) {
+// `page` — which single page (1-based) to fetch this time. routes/directory.js
+// passes whatever page number someone's currently viewing on the Local Jobs
+// page's pagination controls; left at its default for a first, unfiltered load.
+async function getExternalJobs({ q, page } = {}) {
   if (!ADZUNA_APP_ID || !ADZUNA_APP_KEY) {
     return {
       configured: false,
       message: 'ADZUNA_APP_ID/ADZUNA_APP_KEY not set — add them to .env for extra roles from around Cornwall (free registration at developer.adzuna.com).',
       jobs: [],
+      page: 1,
       hasMore: false,
     };
   }
 
   const term = (q || '').trim().slice(0, 100);
-  const pageCount = Math.min(Math.max(parseInt(pages, 10) || DEFAULT_PAGES, 1), MAX_PAGES);
+  const pageNum = Math.min(Math.max(parseInt(page, 10) || DEFAULT_PAGE, 1), MAX_PAGE);
 
   try {
-    // Fetched in parallel and merged — a failure on one page (rate limit,
-    // one slow request timing out) doesn't lose the others; only if EVERY
-    // page fails does this actually throw and fall back to "no external
-    // jobs this time" below.
-    const pageNumbers = Array.from({ length: pageCount }, (_, i) => i + 1);
-    const settled = await Promise.allSettled(pageNumbers.map((page) => fetchPage(term, page)));
+    const { jobs: rawJobs, isFullPage } = await fetchPage(term, pageNum);
 
-    const fulfilled = settled.filter((r) => r.status === 'fulfilled');
-    if (!fulfilled.length) {
-      throw settled[0].reason || new Error('Adzuna request failed');
-    }
+    const jobs = rawJobs.map((j) => ({
+      // Prefixed so an id can never collide with a business_vacancies uuid
+      // once the two lists are merged on the frontend/route.
+      id: 'adz-' + j.id,
+      title: j.title || 'Job vacancy',
+      description: cleanDescription(j.description),
+      applyUrl: j.redirect_url || null,
+      companyName: j.company?.display_name || 'External listing',
+      location: j.location?.display_name || null,
+      createdAt: j.created || null,
+      source: 'external',
+    }));
 
-    const seenIds = new Set();
-    const jobs = [];
-    for (const { value } of fulfilled) {
-      for (const j of value.jobs) {
-        // Prefixed so an id can never collide with a business_vacancies
-        // uuid once the two lists are merged on the frontend/route.
-        const id = 'adz-' + j.id;
-        if (seenIds.has(id)) continue; // pages shouldn't overlap, but cheap to guard against it
-        seenIds.add(id);
-        jobs.push({
-          id,
-          title: j.title || 'Job vacancy',
-          description: cleanDescription(j.description),
-          applyUrl: j.redirect_url || null,
-          companyName: j.company?.display_name || 'External listing',
-          location: j.location?.display_name || null,
-          createdAt: j.created || null,
-          source: 'external',
-        });
-      }
-    }
+    // "Next page exists" only if this page came back full AND we're not
+    // already at the ceiling.
+    const hasMore = pageNum < MAX_PAGE && isFullPage;
 
-    // "More to load" only if every page up to pageCount actually succeeded
-    // AND the last of them came back full — a gap from a failed page in the
-    // middle shouldn't offer to load page N+1 when page N itself is missing.
-    const allSucceeded = fulfilled.length === pageNumbers.length;
-    const lastPage = settled[settled.length - 1];
-    const hasMore = pageCount < MAX_PAGES && allSucceeded && lastPage.status === 'fulfilled' && lastPage.value.isFullPage;
-
-    return { configured: true, jobs, hasMore };
+    return { configured: true, jobs, page: pageNum, hasMore };
   } catch (err) {
     // Fail soft — the business-posted vacancies still render fine even if
     // Adzuna itself is down or rate-limited, same "don't take down the whole
     // page for one flaky source" approach as every other fetcher here.
-    return { configured: true, jobs: [], hasMore: false, error: err.message };
+    return { configured: true, jobs: [], page: pageNum, hasMore: false, error: err.message };
   }
 }
 

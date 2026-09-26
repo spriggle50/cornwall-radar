@@ -2240,11 +2240,12 @@
     // directory category (Food & Drink, Trades & Home Services, ...)
     // doesn't map onto how someone searches for a job (see README).
     let jobsFilters = { q: '' };
-    // How many Adzuna pages (50 jobs each) to ask for — grows each time
-    // someone clicks "Load more roles", resets back to the default whenever
-    // the search term changes so a fresh search doesn't start out already
-    // pulling in 4-5 pages' worth of a previous, unrelated search.
-    let jobsExternalPages = 2;
+    // Which single Adzuna page (50 jobs each) is currently showing — real
+    // page-number navigation rather than an ever-growing "load more" list,
+    // since Adzuna itself serves results one page at a time anyway. Resets
+    // to page 1 whenever the search term changes, so a fresh search doesn't
+    // start out on whatever page a previous, unrelated search was left on.
+    let jobsExternalPage = 1;
 
     async function renderJobsDetail() {
       const panel = document.getElementById('detailPanel');
@@ -2256,12 +2257,17 @@
         const params = new URLSearchParams();
         if (jobsFilters.q) params.set('q', jobsFilters.q);
         if (currentLocation) { params.set('lat', currentLocation.lat); params.set('lon', currentLocation.lon); }
-        params.set('externalPages', jobsExternalPages);
+        params.set('externalPage', jobsExternalPage);
         const res = await fetch('/api/directory/vacancies?' + params.toString());
         data = await res.json();
       } catch (err) {
         data = { configured: true, vacancies: [], error: err.message };
       }
+
+      // Keep local state in sync with whatever the backend actually served
+      // (it clamps out-of-range page numbers), so the pagination controls
+      // never show a page number the results don't match.
+      if (data && data.externalJobsPage) jobsExternalPage = data.externalJobsPage;
 
       panel.innerHTML = backBtn + renderJobsCard(data);
       const input = document.getElementById('jobsSearchInput');
@@ -2274,17 +2280,16 @@
     let jobsSearchTimer = null;
     function onJobsSearchInput(value) {
       jobsFilters.q = value;
-      jobsExternalPages = 2; // new search — don't carry over a previous "load more" count
+      jobsExternalPage = 1; // new search — start back on page 1, not wherever the last search left off
       clearTimeout(jobsSearchTimer);
       jobsSearchTimer = setTimeout(renderJobsDetail, 350);
     }
 
-    // Called from the "Load more roles" button — asks for two more Adzuna
-    // pages' worth (100 more jobs) on top of whatever's already showing,
-    // and re-renders. renderJobsDetail already reads jobsExternalPages via
-    // the params.set() above, so bumping it and re-calling is all this needs.
-    function loadMoreExternalJobs() {
-      jobsExternalPages += 2;
+    // Called from the pagination "Previous"/"Next" buttons under the Adzuna
+    // section. renderJobsDetail already reads jobsExternalPage via the
+    // params.set() above, so setting it and re-calling is all this needs.
+    function goToExternalJobsPage(page) {
+      jobsExternalPage = Math.max(1, page);
       renderJobsDetail();
     }
 
@@ -2344,16 +2349,22 @@
       } else if (!vacancies.length) {
         body = '<p class="account-note">No roles listed right now' + (jobsFilters.q ? ' matching that search.' : ' — check back soon.') + '</p>';
       } else {
-        // "Load more" only appears once there's at least one external result
-        // to begin with, and only when the backend says there's actually
-        // another full page waiting (data.externalJobsHasMore) — no point
-        // showing it once Adzuna's genuinely run out for this search.
-        const loadMoreBtn = data.externalJobsHasMore
-          ? '<button class="btn-secondary" style="margin-top:10px;" onclick="loadMoreExternalJobs()">Load more roles from around Cornwall</button>'
-          : (externalJobs.length ? '<p class="account-note" style="margin-top:10px;">That\'s everything Adzuna has for this search right now.</p>' : '');
+        // Previous/Next page-number controls for the Adzuna section only —
+        // the business-posted section above never needs paging, there just
+        // aren't enough of those to need it. Previous shows once we're past
+        // page 1; Next shows only when the backend confirms another full
+        // page is actually waiting (data.externalJobsHasMore).
+        const currentPage = data.externalJobsPage || jobsExternalPage;
+        const pagerBtns = []
+          .concat(currentPage > 1 ? ['<button class="btn-secondary" onclick="goToExternalJobsPage(' + (currentPage - 1) + ')">← Previous</button>'] : [])
+          .concat(['<span class="account-note" style="margin: 0 8px;">Page ' + currentPage + '</span>'])
+          .concat(data.externalJobsHasMore ? ['<button class="btn-secondary" onclick="goToExternalJobsPage(' + (currentPage + 1) + ')">Next →</button>'] : []);
+        const pager = externalJobs.length
+          ? '<div style="display:flex; align-items:center; margin-top:10px;">' + pagerBtns.join('') + '</div>'
+          : '';
         body = ''
           + (localJobs.length ? '<div class="jobs-group-heading">🏪 Posted directly by Cornwall Radar businesses</div>' + localJobs.map(renderJobRow).join('') : '')
-          + (externalJobs.length ? '<div class="jobs-group-heading">🌐 More vacancies from around Cornwall — via Adzuna</div>' + externalJobs.map(renderJobRow).join('') + loadMoreBtn : '');
+          + (externalJobs.length ? '<div class="jobs-group-heading">🌐 More vacancies from around Cornwall — via Adzuna</div>' + externalJobs.map(renderJobRow).join('') + pager : '');
       }
 
       return '<div class="card"><h2>💼 Local Jobs</h2>'
