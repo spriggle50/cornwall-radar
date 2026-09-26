@@ -3505,14 +3505,41 @@
     function renderAdminCard(businesses, reviews) {
       if (businesses === null && reviews === null) return '';
 
+      // Same tiny attribute-escaper as renderBusinessCards's own `esc` —
+      // that one's scoped to its own function, so this needs its own copy
+      // rather than reaching into another function's local scope.
+      const esc = (v) => (v || '').replace(/"/g, '&quot;');
+
       const businessRows = (businesses || []).length
         ? businesses.map((b) => {
             const date = new Date(b.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+            // Edit form starts hidden (toggleAdminEditBusiness) and is
+            // pre-filled from the same data the row already shows — no
+            // second fetch needed. Deliberately name/category/phone/
+            // website/email/postcode only, same fields business.js's own
+            // PUT /businesses/:id accepts — description/logo/voucher/
+            // vacancies stay owner-only, edited from their own account panel.
+            const editForm = '<div id="adminBizEdit-' + b.id + '" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">'
+              + '<div class="account-field"><label>Business name</label><input type="text" id="adminBizName-' + b.id + '" value="' + esc(b.name) + '" /></div>'
+              + '<div class="account-field"><label>Category</label><select id="adminBizCategory-' + b.id + '">'
+              + businessCategories.map((c) => '<option value="' + esc(c) + '"' + (b.category === c ? ' selected' : '') + '>' + c + '</option>').join('')
+              + '</select></div>'
+              + '<div class="account-field"><label>Postcode or town</label><input type="text" id="adminBizPostcode-' + b.id + '" value="' + esc(b.postcode) + '" /></div>'
+              + '<div class="account-field"><label>Phone</label><input type="text" id="adminBizPhone-' + b.id + '" value="' + esc(b.phone) + '" /></div>'
+              + '<div class="account-field"><label>Website</label><input type="text" id="adminBizWebsite-' + b.id + '" value="' + esc(b.website) + '" placeholder="yourbusiness.co.uk" /></div>'
+              + '<div class="account-field"><label>Contact email</label><input type="text" id="adminBizEmail-' + b.id + '" value="' + esc(b.email) + '" />'
+              + '<p class="account-note">This is just the contact address shown here — it doesn\'t change the owner\'s actual sign-in.</p></div>'
+              + '<button class="btn-primary" onclick="saveAdminBusinessEdit(\'' + b.id + '\')">Save changes</button> '
+              + '<button class="btn-secondary" onclick="toggleAdminEditBusiness(\'' + b.id + '\')">Cancel</button>'
+              + '<div id="adminBizEditStatus-' + b.id + '"></div>'
+              + '</div>';
             return '<div class="review-row">'
               + '<div class="review-row-top"><span><strong>' + b.name + '</strong> — ' + b.category + (b.postcode ? ' · ' + b.postcode : '') + '</span><span class="review-row-date">' + date + '</span></div>'
               + '<p class="review-row-comment">' + b.email + ' · ' + (b.subscription_status || 'free') + '</p>'
+              + '<button class="btn-secondary" onclick="toggleAdminEditBusiness(\'' + b.id + '\')">Edit details</button> '
               + '<button class="btn-secondary" onclick="adminRemoveBusiness(\'' + b.id + '\')">Remove listing</button>'
               + '<div id="adminBizStatus-' + b.id + '"></div>'
+              + editForm
               + '</div>';
           }).join('')
         : '<p class="account-note">No listings.</p>';
@@ -3539,6 +3566,30 @@
         + '<h3 style="margin:16px 0 6px;">All reviews (' + (reviews || []).length + ')</h3>'
         + reviewRows
         + '</div>';
+    }
+
+    function toggleAdminEditBusiness(id) {
+      const form = document.getElementById('adminBizEdit-' + id);
+      if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    }
+
+    async function saveAdminBusinessEdit(id) {
+      const status = document.getElementById('adminBizEditStatus-' + id);
+      const payload = {
+        name: document.getElementById('adminBizName-' + id).value.trim(),
+        category: document.getElementById('adminBizCategory-' + id).value,
+        postcode: document.getElementById('adminBizPostcode-' + id).value.trim(),
+        phone: document.getElementById('adminBizPhone-' + id).value.trim(),
+        website: document.getElementById('adminBizWebsite-' + id).value.trim(),
+        email: document.getElementById('adminBizEmail-' + id).value.trim(),
+      };
+      if (status) status.innerHTML = '<p class="account-note">Saving…</p>';
+      try {
+        await authedFetch('/api/admin/businesses/' + id, { method: 'PUT', body: JSON.stringify(payload) });
+        renderAccountPanel();
+      } catch (err) {
+        if (status) status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
     }
 
     async function adminRemoveBusiness(id) {

@@ -11,23 +11,90 @@ const router = express.Router();
 const { supabaseAdmin } = require('../lib/supabaseClient');
 const { requireAuth } = require('../middleware/requireAuth');
 const { requireAdmin } = require('../middleware/requireAdmin');
+const { geocodeLocation } = require('../fetchers/geocode');
+const { BUSINESS_CATEGORIES } = require('../lib/businessCategories');
 
 router.use(requireAuth, requireAdmin);
+
+// Same tiny helper as business.js's own listing-save route — duplicated
+// rather than imported, matching this project's habit of keeping a few
+// lines of route-local logic local rather than adding a cross-file
+// dependency just to share it (see business.js's own copy for the same
+// reasoning, and index.html's client-side copy for the third instance).
+function normalizeWebsiteUrl(raw) {
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return null;
+  return /^https?:\/\//i.test(trimmed) ? trimmed : 'https://' + trimmed;
+}
 
 // GET /api/admin/businesses — every business listing, newest first. Includes
 // the owner's login email (same information the emailed moderation link
 // already shows) — this endpoint only ever answers to the admin, so there's
 // no privacy concern in exposing it here that doesn't already exist there.
+// phone/website are included too now, on top of what was already returned,
+// so the admin panel's edit form (see PUT below) can pre-fill them.
 router.get('/businesses', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('businesses')
-      .select('id, name, category, postcode, email, subscription_status, created_at')
+      .select('id, name, category, postcode, email, phone, website, subscription_status, created_at')
       .order('created_at', { ascending: false });
     if (error) throw new Error(error.message);
     res.json({ businesses: data || [] });
   } catch (err) {
     res.status(400).json({ error: err.message || 'Could not load listings' });
+  }
+});
+
+// PUT /api/admin/businesses/:id — lets Ady fix a business's own basic
+// details on their behalf (a mistyped website was the original case this
+// was built for) without the owner needing to sign in and do it themselves.
+// Deliberately limited to the fields most likely to need a quick correction
+// — name, category, phone, website, postcode, and the account's contact
+// email — NOT logo/description/voucher/vacancies, which stay owner-only
+// edits via routes/business.js so a business's own richer content is never
+// silently touched by anyone but them. `email` here is businesses.email —
+// the contact address shown in this admin list — NOT the owner's actual
+// Supabase Auth sign-in, which can't be (and doesn't need to be) changed
+// from here.
+router.put('/businesses/:id', async (req, res) => {
+  const { name, category, phone, website, email, postcode } = req.body || {};
+  if (!name || !name.trim() || !postcode || !postcode.trim()) {
+    return res.status(400).json({ error: 'A business name and postcode/town are both required' });
+  }
+  if (!category || !BUSINESS_CATEGORIES.includes(category)) {
+    return res.status(400).json({ error: 'Choose a category from the list' });
+  }
+  if (!email || !email.trim()) {
+    return res.status(400).json({ error: 'A contact email is required' });
+  }
+
+  try {
+    // Same re-geocode-on-every-save approach as business.js's own PUT
+    // /listing — simpler than trying to detect "did the postcode actually
+    // change" and cheap enough (geocodeLocation has its own caching) not to
+    // matter.
+    const geo = await geocodeLocation(postcode);
+
+    const { data, error } = await supabaseAdmin
+      .from('businesses')
+      .update({
+        name: name.trim(),
+        category: category.trim(),
+        phone: (phone || '').trim() || null,
+        website: normalizeWebsiteUrl(website),
+        email: email.trim(),
+        postcode: postcode.trim(),
+        lat: geo.lat,
+        lng: geo.lon,
+      })
+      .eq('id', req.params.id)
+      .select('id, name, category, postcode, email, phone, website, subscription_status, created_at')
+      .single();
+    if (error) throw new Error(error.message);
+    res.json(data);
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Could not save changes — check the postcode/town is valid' });
   }
 });
 
