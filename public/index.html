@@ -606,6 +606,7 @@
   <footer>
     Weather: Open-Meteo · Wildlife: GBIF · Buses: BODS · Traffic: TomTom &amp; National Highways · Tides: tidetimes.org.uk
     <div class="footer-legal">
+      <a href="/directory">Cornwall Business Directory</a>·
       <a href="/privacy-policy.html">Privacy Policy</a>·
       <a href="/terms.html">Terms of Use</a>·
       <a href="/cookie-policy.html">Cookie Policy</a>·
@@ -2064,7 +2065,8 @@
       }
 
       return '<div class="card"><h2>🏪 Business Directory</h2>'
-        + '<p class="section-subtitle">Local businesses across Cornwall — Featured listings appear first.</p>'
+        + '<p class="section-subtitle">Local businesses across Cornwall — Featured listings appear first. '
+        + '<a href="/directory" target="_blank" rel="noopener">Browse the full directory as a plain webpage →</a></p>'
         + searchBar
         + body
         + '</div>'
@@ -2406,9 +2408,14 @@
       // thing seen — covers both the consumer (?billing=) and business
       // (?businessBilling=) checkout flows, which use separate query params
       // since they're separate Stripe Prices/subscriptions (see billing.js
-      // and business.js's success_url/cancel_url).
+      // and business.js's success_url/cancel_url). `?listBusiness=1` is the
+      // same trick used by the "List your business free" links on the
+      // server-rendered SEO directory pages (routes/seoPages.js) — those
+      // pages are static HTML with no access to this app's JS functions, so
+      // a plain link with this query param is how they hand off into
+      // actually opening the sign-in/listing form here.
       const params = new URLSearchParams(window.location.search);
-      if (params.get('billing') || params.get('businessBilling')) openAccountPanel();
+      if (params.get('billing') || params.get('businessBilling') || params.get('listBusiness')) openAccountPanel();
     }
 
     function openAccountPanel() {

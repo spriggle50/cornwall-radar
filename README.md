@@ -214,3 +214,51 @@ alter table business_vacancies enable row level security;
 create policy "businesses manage own vacancies" on business_vacancies for all using (auth.uid() = business_id);
 create policy "anyone can view vacancies" on business_vacancies for select using (true);
 ```
+
+## SEO pages for the business directory — built
+
+The main app (`public/index.html`) is a single-page app — everything on it,
+including the business directory, loads in via JavaScript after the page
+arrives, and it's all one URL (`/`). That's fine for people already using
+the app, but it's a real handicap against a competing "Cornwall business
+directory" site that has plain, server-rendered pages of its own: nothing on
+`/` gives Google a `/directory`-shaped page to rank for that search, or a
+page per business for someone searching a business's name.
+
+`routes/seoPages.js` is a second, much simpler front door onto the exact
+same `businesses` table — no accounts, no JavaScript required to read it,
+just plain HTML with real text and real links, each page with its own
+`<title>`/description:
+
+- **`/directory`** — the whole directory, grouped by category. Targets the
+  broad "Cornwall business directory" search the competing site is built
+  entirely around.
+- **`/directory?category=X`** — one category across all of Cornwall (e.g.
+  every "Trades & Home Services" listing). Targets "`<trade>` in Cornwall"
+  searches.
+- **`/directory/business/:id/:slug`** — every listed business gets its own
+  page (name, description, category, phone, website, postcode, plus
+  `LocalBusiness` structured data). `:slug` is cosmetic only — built fresh
+  from the business's current name on every request — so an old link never
+  breaks even if the owner renames later; `:id` alone is what's actually
+  looked up. This is the same "give every listing its own indexable URL"
+  approach other Cornwall directories use, and it's what actually gives a
+  directory enough separate pages to compete on long-tail searches (a
+  specific business's name, or a trade + a specific town) rather than
+  relying on one page to rank for everything at once.
+- **`/sitemap.xml`** — lists every page above (home, `/directory`, every
+  category, every business), regenerated live from the database on each
+  request, referenced from `robots.txt`, so search engines don't have to
+  discover each business page one crawled link at a time.
+
+Every one of these pages also has a "List your business free" link, since a
+business owner (not just someone looking for one) can land on any of them —
+it points at `/?listBusiness=1`, which the main app's own boot-time
+query-param check turns into automatically opening the sign-in/listing
+panel, the same trick already used for the Stripe checkout return URLs.
+
+No new environment variables and no schema changes — this reads the same
+`businesses` table the app itself already uses. All canonical/sitemap/social
+URLs use `https://www.cornwallradar.co.uk` (not the bare domain), matching
+the reasoning in `index.html`'s own head-tag comment: the bare domain is
+only ever a 301 forward, never the address that actually resolves.

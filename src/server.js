@@ -11,6 +11,7 @@ const directoryRoute = require('./routes/directory');
 const reviewsRoute = require('./routes/reviews');
 const adminRoute = require('./routes/admin');
 const alertsRoute = require('./routes/alerts');
+const seoPagesRoute = require('./routes/seoPages');
 const { geocodeLocation } = require('./fetchers/geocode');
 const { runMorningDigest } = require('./jobs/morningDigest');
 const { runAlertEngine } = require('./jobs/alertEngine');
@@ -55,6 +56,12 @@ app.use('/api/admin', adminRoute);
 // Alert preferences (morning digest, traffic, weather, wildlife) — actually
 // sending them happens in the two cron-triggered jobs below, not here.
 app.use('/api/alerts', alertsRoute);
+// Server-rendered, JS-free SEO pages (/directory, /directory/business/:id/:slug,
+// /sitemap.xml) — a second, plain-HTML front door onto the same businesses
+// table the API routes above serve to the app itself. See routes/seoPages.js's
+// own top comment for why the main app (a single-page app with everything
+// loaded in via JS) isn't enough on its own for this.
+app.use('/', seoPagesRoute);
 
 // GET /api/public-config — the handful of values the frontend needs to talk
 // to Supabase directly (its anon key is designed to be shared with the
