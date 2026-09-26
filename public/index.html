@@ -2277,12 +2277,24 @@
       }
     }
 
-    let jobsSearchTimer = null;
+    // Just tracks what's been typed as the person types — doesn't search on
+    // every keystroke. The actual search only runs when they press Enter or
+    // click the Search button (onJobsSearchSubmit below), so typing "chef"
+    // doesn't fire a search after "c", then "ch", then "che"...
     function onJobsSearchInput(value) {
       jobsFilters.q = value;
+    }
+
+    function onJobsSearchKeydown(event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        onJobsSearchSubmit();
+      }
+    }
+
+    function onJobsSearchSubmit() {
       jobsExternalPage = 1; // new search — start back on page 1, not wherever the last search left off
-      clearTimeout(jobsSearchTimer);
-      jobsSearchTimer = setTimeout(renderJobsDetail, 350);
+      renderJobsDetail();
     }
 
     // Called from the pagination "Previous"/"Next" buttons under the Adzuna
@@ -2329,9 +2341,11 @@
     }
 
     function renderJobsCard(data) {
-      const searchBar = '<div class="directory-search-bar">'
-        + '<input type="text" id="jobsSearchInput" placeholder="Search job titles…" value="'
-        + (jobsFilters.q || '').replace(/"/g, '&quot;') + '" oninput="onJobsSearchInput(this.value)" />'
+      const searchBar = '<div class="directory-search-bar" style="display:flex; gap:8px;">'
+        + '<input type="text" id="jobsSearchInput" placeholder="Search job titles… (press Enter)" style="flex:1;" value="'
+        + (jobsFilters.q || '').replace(/"/g, '&quot;')
+        + '" oninput="onJobsSearchInput(this.value)" onkeydown="onJobsSearchKeydown(event)" />'
+        + '<button class="btn-primary" onclick="onJobsSearchSubmit()">Search</button>'
         + '</div>';
 
       const vacancies = (data && data.vacancies) || [];
