@@ -5,17 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cornwall Radar — live weather, tides, traffic & things to do</title>
   <meta name="description" content="Live weather, tide times, traffic, buses, wildlife sightings, local news, days out and vouchers for Cornwall — all in one place, free to use." />
-  <!-- www, not the bare domain — cornwallradar.co.uk (no www) only has a
-       301 forward to this address, since a CNAME (what Railway needs) can
-       never sit at a bare domain's root. Crawlers/API calls need the real
-       address, not the one that redirects. -->
   <link rel="canonical" href="https://www.cornwallradar.co.uk/" />
-  <!-- Social share preview (Facebook/WhatsApp/Nextdoor/X etc.) — this is
-       what turns a bare link posted in a community group into something
-       people actually stop and click, so it matters more than usual for a
-       word-of-mouth launch. Using the square app icon as a placeholder
-       og:image for now (no dedicated 1200x630 banner image exists yet) —
-       swap in a proper wide banner later for a less-cropped preview. -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Cornwall Radar" />
   <meta property="og:title" content="Cornwall Radar — live weather, tides, traffic & things to do" />
@@ -36,8 +26,6 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- Only used once SUPABASE_URL/SUPABASE_ANON_KEY are set on the server —
-       see accountPanel's JS below. Harmless to load unconditionally. -->
   <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <style>
     :root {
@@ -63,7 +51,6 @@
       margin: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased;
     }
-
     header {
       background: linear-gradient(135deg, #12283f 0%, #0d5b64 48%, #076b4a 100%);
       color: #fff; padding: 22px 18px 26px;
@@ -71,7 +58,6 @@
     header h1 { margin: 0; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; display: flex; align-items: center; gap: 10px; }
     header h1 img { width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0; }
     header p { margin: 4px 0 0; opacity: 0.88; font-size: 0.88rem; font-weight: 500; }
-
     .location-wrap { max-width: 640px; margin: -16px auto 0; padding: 0 14px; position: relative; z-index: 2; }
     .location-bar {
       display: flex; gap: 6px; background: #fff; border-radius: var(--radius-md);
@@ -99,10 +85,8 @@
       border: none; font: inherit; padding: 0; margin-left: 6px; font-weight: 600;
     }
     .location-error { color: #c0362c; }
-
     main { padding: 14px; max-width: 640px; margin: 0 auto; }
     .section-subtitle { font-size: 0.78rem; color: var(--text-2); margin: -4px 0 10px; }
-
     .card {
       background: var(--card-bg); border-radius: var(--radius-lg); padding: 18px;
       margin-bottom: 14px; box-shadow: var(--shadow-sm);
@@ -110,10 +94,6 @@
     .card h2 { margin: 0 0 10px; font-size: 1.02rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
     .card h3 { margin: 0 0 6px; font-size: 0.88rem; font-weight: 700; color: var(--text-2); }
     .card .unavailable { color: var(--text-3); font-size: 0.9rem; }
-
-    /* ── Weather hero — the one thing every visitor should see and register
-       instantly, so it gets a full-bleed gradient treatment reflecting the
-       actual conditions rather than a plain white card like everything else. */
     .weather-hero {
       border-radius: var(--radius-lg); padding: 24px 22px; margin-bottom: 16px;
       color: #fff; box-shadow: var(--shadow-md); position: relative; overflow: hidden;
@@ -125,7 +105,6 @@
     .weather-hero.cond-snow    { background: linear-gradient(135deg, #5f8fc7 0%, #a9d6e5 100%); }
     .weather-hero.cond-fog     { background: linear-gradient(135deg, #7c8a94 0%, #b9c4cb 100%); }
     .weather-hero.cond-storm   { background: linear-gradient(135deg, #232526 0%, #3f3f46 100%); }
-
     .weather-hero-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
     .weather-main { display: flex; align-items: center; gap: 14px; }
     .weather-emoji { font-size: 3.6rem; line-height: 1; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.15)); }
@@ -136,7 +115,6 @@
       font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
       background: rgba(255,255,255,0.18); padding: 5px 10px; border-radius: 999px; white-space: nowrap;
     }
-
     .weather-stats-row { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
     .weather-stat {
       flex: 1; min-width: 84px; background: rgba(255,255,255,0.16); border-radius: var(--radius-sm);
@@ -146,7 +124,6 @@
     .weather-stat-value { font-size: 1rem; font-weight: 700; margin-top: 2px; }
     .uv-low { color: #d7ffe6; } .uv-moderate { color: #fff5c2; } .uv-high { color: #ffd8a8; }
     .uv-veryhigh { color: #ffb4a8; } .uv-extreme { color: #ffb4f0; }
-
     .weather-forecast-strip {
       display: flex; gap: 8px; margin-top: 16px; padding-top: 14px;
       border-top: 1px solid rgba(255,255,255,0.22);
@@ -159,9 +136,6 @@
     .weather-forecast-day-emoji { font-size: 1.35rem; margin: 4px 0 2px; }
     .weather-forecast-day-temps { font-size: 0.78rem; font-weight: 700; }
     .weather-forecast-day-temps .lo { opacity: 0.7; font-weight: 500; }
-
-    /* ── Hub grid — small "calling cards" on the main page, each opening its
-       own detail view instead of every list living on the main scroll. */
     .hub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
     .hub-card {
       background: var(--card-bg); border-radius: var(--radius-md); overflow: hidden; cursor: pointer;
@@ -170,17 +144,10 @@
       transition: transform 0.15s, box-shadow 0.15s;
     }
     .hub-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
-    /* aspect-ratio (not a fixed pixel height) so the photo keeps showing the
-       same proportion of the shot as the card resizes — a fixed height was
-       cropping down to a thin sliver (a bus's roof, a bird's wing) once the
-       grid had more room to work with. */
     .hub-card-photo { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
     .hub-card-body { padding: 11px 13px 13px; }
     .hub-card-title { font-size: 0.86rem; font-weight: 700; color: var(--text); margin-bottom: 3px; letter-spacing: -0.01em; }
     .hub-card-preview { font-size: 0.75rem; color: var(--text-2); line-height: 1.35; }
-    /* Row-style hub card for sections with no photo (News) — spans the full
-       grid width so the title has room to sit on one line, styled like a
-       settings-list row rather than a squeezed-down photo card. */
     .hub-card.wide { grid-column: 1 / -1; }
     .hub-card.row { flex-direction: row; align-items: center; gap: 13px; padding: 15px 16px; }
     .hub-card.row .hub-card-icon {
@@ -191,7 +158,6 @@
     .hub-card.row .hub-card-title { margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .hub-card.row .hub-card-preview { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .hub-card.row .hub-card-chevron { flex-shrink: 0; color: var(--text-3); font-size: 1.1rem; }
-
     .back-btn {
       display: inline-flex; align-items: center; gap: 6px; background: var(--card-bg);
       border: 1px solid var(--border); border-radius: 999px; padding: 9px 16px;
@@ -199,7 +165,6 @@
       cursor: pointer; font-family: inherit; box-shadow: var(--shadow-sm);
     }
     .back-btn:hover { background: var(--accent-soft); color: var(--accent-dark); }
-
     .news-item { padding: 10px 0; border-top: 1px solid var(--border); font-size: 0.9rem; }
     .news-item:first-child { border-top: none; padding-top: 2px; }
     .news-item a { color: var(--text); text-decoration: none; font-weight: 500; }
@@ -212,7 +177,6 @@
     .sighting.clickable:hover { background: var(--accent-soft); }
     #wildlifeMap { width: 100%; height: 300px; border-radius: var(--radius-sm); margin-bottom: 8px; background: #e5e7eb; }
     #stormOverflowMap { width: 100%; height: 300px; border-radius: var(--radius-sm); margin-bottom: 8px; background: #e5e7eb; }
-
     .train-row { padding: 10px 0; border-top: 1px solid var(--border); font-size: 0.9rem; display: flex; justify-content: space-between; gap: 10px; }
     .train-row:first-child { border-top: none; padding-top: 2px; }
     .train-row .train-time { font-weight: 700; min-width: 46px; }
@@ -223,7 +187,6 @@
     .train-status.delayed { color: #b45309; }
     .train-status.cancelled { color: #b91c1c; }
     .disruption-banner { background: #fef3c7; color: #92400e; padding: 9px 12px; border-radius: var(--radius-sm); font-size: 0.82rem; margin-bottom: 12px; }
-
     .overflow-item { padding: 10px 0; border-top: 1px solid var(--border); font-size: 0.9rem; }
     .overflow-item:first-child { border-top: none; padding-top: 2px; }
     .overflow-item.clickable { cursor: pointer; margin: 0 -18px; padding: 10px 18px; transition: background 0.13s; }
@@ -234,7 +197,6 @@
     .overflow-status-badge.offline { background: #e5e7eb; color: #4b5563; }
     .overflow-watercourse { font-weight: 600; }
     .overflow-meta { color: var(--text-3); font-size: 0.78rem; margin-top: 2px; }
-
     .subhead { font-size: 0.95rem; margin: 16px 0 4px; color: var(--text-2); }
     .flood-warning { border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px; font-size: 0.86rem; }
     .flood-warning.severe { background: #fee2e2; }
@@ -249,7 +211,6 @@
     .level-tidal-badge { font-size: 0.68rem; font-weight: 700; color: var(--accent-dark); background: var(--accent-soft); padding: 1px 7px; border-radius: 999px; }
     .level-value { text-align: right; font-weight: 700; }
     .level-meta { color: var(--text-3); font-size: 0.76rem; font-weight: 400; }
-
     .bw-search {
       width: 100%; box-sizing: border-box; padding: 10px 13px; margin: 4px 0 14px;
       border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.9rem;
@@ -270,17 +231,11 @@
     .traffic-item.clickable:hover { background: var(--accent-soft); }
     .traffic-item-link { font-size: 0.76rem; font-weight: 700; color: var(--accent-dark); }
     .card-banner {
-      /* Same reasoning as .hub-card-photo above: a fixed pixel height crops
-         down to almost nothing once the centre column is allowed to stretch
-         on a wider screen. aspect-ratio keeps a sensible proportion of the
-         photo visible at any width, capped so it doesn't get absurdly tall
-         on a narrow phone. */
       width: 100%; aspect-ratio: 20 / 7; max-height: 320px; object-fit: cover;
       border-radius: var(--radius-sm); margin-bottom: 14px; display: block;
     }
     #trafficMap { width: 100%; height: 340px; border-radius: var(--radius-sm); margin-bottom: 12px; background: #e5e7eb; }
     .map-legend { font-size: 0.72rem; color: var(--text-3); margin: -6px 0 14px; }
-
     .tide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
     .tide-chip {
       display: flex; align-items: center; gap: 10px; padding: 11px 13px;
@@ -292,19 +247,12 @@
     .tide-chip-type { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); }
     .tide-chip-time { font-size: 1.15rem; font-weight: 800; color: var(--text); line-height: 1.15; }
     .tide-chip-height { font-size: 0.76rem; color: var(--accent-dark); font-weight: 700; }
-
-    /* ── Weather Details page — extended forecast, pollen, and extra
-       current-conditions stats. Kept as its own hub card + detail view
-       rather than crowding the top-of-page hero, which stays the fast
-       at-a-glance read. */
     .wd-subhead { font-size: 0.88rem; font-weight: 700; margin: 18px 0 10px; }
     .wd-subhead:first-of-type { margin-top: 4px; }
-
     .wd-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
     .wd-stat { padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: #f9fbfa; }
     .wd-stat-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); }
     .wd-stat-value { font-size: 1rem; font-weight: 700; color: var(--text); margin-top: 2px; }
-
     .wd-forecast-list { display: flex; flex-direction: column; }
     .wd-forecast-row {
       display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--border);
@@ -317,7 +265,6 @@
     .wd-forecast-rain { color: var(--text-3); font-size: 0.78rem; flex-shrink: 0; }
     .wd-forecast-temps { font-weight: 700; flex-shrink: 0; }
     .wd-forecast-temps .lo { opacity: 0.6; font-weight: 500; }
-
     .pollen-list { display: flex; flex-direction: column; gap: 12px; }
     .pollen-row-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
     .pollen-type { font-size: 0.88rem; font-weight: 700; }
@@ -335,7 +282,6 @@
     .pollen-bar-fill.pollen-veryhigh { background: #dc2626; }
     .pollen-bar-fill.pollen-none { background: var(--text-3); }
     .pollen-tip { font-size: 0.78rem; color: var(--text-2); margin-top: 5px; line-height: 1.35; }
-
     .worldclock-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
     .worldclock-item {
       padding: 10px 6px; border-radius: var(--radius-sm); border: 1px solid var(--border);
@@ -350,9 +296,6 @@
       font-size: 0.62rem; font-weight: 700; color: var(--accent-dark); background: var(--accent-soft);
       padding: 1px 5px; border-radius: 999px;
     }
-
-    /* ── Events & What's On — a free photo-card feed (What's On) plus an
-       optional grid of ticketed events grouped by month. */
     .feed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
     .feed-card {
       background: #f9fbfa; border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -368,7 +311,6 @@
     .feed-card-body { padding: 9px 10px; }
     .feed-card-title { font-size: 0.78rem; font-weight: 700; line-height: 1.35; margin-bottom: 3px; }
     .feed-card-date { font-size: 0.7rem; color: var(--text-3); }
-
     .event-month-group { margin-top: 18px; }
     .event-month-label {
       font-size: 0.78rem; font-weight: 800; color: var(--accent-dark); text-transform: uppercase;
@@ -394,10 +336,6 @@
       font-size: 0.72rem; font-weight: 700; text-decoration: none;
     }
     .event-tickets-btn:hover { background: #F59E0B; }
-
-    /* ── Account panel — sign-in, saved locations, morning digest, billing.
-       Reuses .card/.back-btn from the rest of the site rather than
-       inventing a new visual language for one panel. */
     .account-btn {
       background: rgba(255,255,255,0.18); border: none; color: #fff; height: 38px;
       border-radius: 999px; font-size: 0.85rem; font-weight: 700; cursor: pointer; display: flex;
@@ -408,7 +346,6 @@
     .account-btn .account-btn-icon { font-size: 1.05rem; line-height: 1; }
     .header-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .header-top-text { min-width: 0; }
-
     .account-status-badge {
       display: inline-block; font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
       letter-spacing: 0.04em; padding: 3px 10px; border-radius: 999px; margin-left: 8px;
@@ -416,7 +353,6 @@
     .account-status-badge.free { background: var(--border); color: var(--text-2); }
     .account-status-badge.active { background: var(--accent-soft); color: var(--accent-dark); }
     .account-status-badge.past_due, .account-status-badge.canceled { background: #fde3e0; color: #b3261e; }
-
     .account-field { margin-bottom: 12px; }
     .account-field label { display: block; font-size: 0.78rem; font-weight: 700; color: var(--text-2); margin-bottom: 5px; }
     .account-field input, .account-field select {
@@ -424,7 +360,6 @@
       font-size: 0.9rem; font-family: inherit; color: var(--text); background: #fff;
     }
     .account-field input:focus, .account-field select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
-
     .btn-primary, .btn-secondary {
       padding: 10px 18px; border-radius: var(--radius-sm); border: none; font-weight: 700;
       font-size: 0.85rem; cursor: pointer; font-family: inherit; transition: background 0.13s;
@@ -436,7 +371,6 @@
     .btn-secondary:hover { background: #d3f0e2; }
     .btn-danger, .btn-primary.btn-danger { background: #fbe4e2; color: #a3271b; }
     .btn-danger:hover, .btn-primary.btn-danger:hover { background: #f6c9c5; }
-
     .location-row {
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
       padding: 10px 0; border-top: 1px solid var(--border);
@@ -449,12 +383,9 @@
       font-family: inherit; padding: 4px 8px;
     }
     .location-row-remove:hover { color: #b3261e; }
-
     .account-note { font-size: 0.8rem; color: var(--text-2); line-height: 1.5; }
     .account-error { color: #b3261e; font-size: 0.85rem; margin: 6px 0; }
     .account-success { color: var(--accent-dark); font-size: 0.85rem; margin: 6px 0; }
-
-    /* ── Business directory (Phase 3) ─────────────────────────────────── */
     .directory-search-bar { display: flex; gap: 8px; margin-bottom: 14px; }
     .directory-search-bar input, .directory-search-bar select {
       flex: 1; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);
@@ -479,10 +410,6 @@
       letter-spacing: 0.04em; padding: 3px 9px; border-radius: 999px; background: #fff2cc; color: #9a6b00;
       white-space: nowrap; flex-shrink: 0;
     }
-    /* Local Jobs: a business-posted role vs one pulled in from Adzuna need to
-       be unmistakable at a glance, not just a subtle label — hence a colour-
-       coded badge on every row AND the two are grouped under their own
-       subheading (see renderJobsCard) rather than interleaved by date. */
     .job-source-badge {
       display: inline-block; font-size: 0.62rem; font-weight: 800; text-transform: uppercase;
       letter-spacing: 0.03em; padding: 2px 8px; border-radius: 999px; white-space: nowrap; margin-left: 6px;
@@ -496,9 +423,6 @@
     .jobs-group-heading:first-of-type { margin-top: 4px; padding-top: 0; border-top: none; }
     .review-toggle-link { text-decoration: none; font-weight: 600; }
     .review-toggle-link:hover { text-decoration: underline; }
-
-    /* Reviews — both the expandable per-directory-row panel and the
-       business owner's "reviews on your listing" card share these classes. */
     .reviews-panel { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
     .review-row { padding: 10px 0; border-top: 1px solid var(--border); }
     .review-row:first-child { border-top: none; }
@@ -517,49 +441,27 @@
       font-size: 0.88rem; font-family: inherit; color: var(--text); background: #fff; box-sizing: border-box;
       margin-bottom: 8px; resize: vertical;
     }
-
-    /* Main-dashboard "Sponsored" strip — a handful of rotating Featured
-       businesses, separate from (and higher-visibility than) the full
-       directory page. Horizontally scrollable so it stays compact on
-       mobile regardless of how many slots are configured server-side. */
     .sponsored-strip { margin-bottom: 14px; }
     .sponsored-strip-label {
       font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
       color: var(--text-3); margin: 0 2px 6px;
     }
-    /* space-between so a handful of cards spread across the row's full
-       width (e.g. 3 cards on a wide desktop row that could fit 5 sit at
-       both ends with one in the middle) instead of bunching to the left
-       with a slab of empty space on the right. Once there are enough
-       sponsors to fill or overflow the row, this has no visible effect —
-       it only kicks in when there's spare room to distribute. */
     .sponsored-row { display: flex; justify-content: space-between; gap: 10px; overflow-x: auto; padding-bottom: 2px; }
     .sponsored-card {
       flex: 0 0 auto; width: 168px; background: var(--card-bg); border-radius: var(--radius-md);
       padding: 12px; box-shadow: var(--shadow-sm); text-align: left; text-decoration: none; color: inherit;
       border: 1px solid var(--border);
     }
-    /* This is the actual "paying for visibility" real estate, so the logo
-       here is deliberately much bigger than the 36px thumbnail used in the
-       plain directory listing rows below — it should feel like the premium
-       spot it is. */
     .sponsored-card-logo {
       width: 64px; height: 64px; object-fit: contain; border-radius: var(--radius-sm); margin-bottom: 8px;
       background: #fff; border: 1px solid var(--border); padding: 5px; box-sizing: border-box;
     }
     .sponsored-card-name { font-weight: 700; font-size: 0.85rem; line-height: 1.25; }
     .sponsored-card-category { font-size: 0.72rem; color: var(--text-2); margin-top: 2px; }
-
     footer { text-align: center; padding: 24px 16px; color: var(--text-3); font-size: 0.78rem; }
     footer .footer-legal { margin-top: 8px; }
     footer .footer-legal a { color: var(--text-2); text-decoration: none; margin: 0 6px; }
     footer .footer-legal a:hover { text-decoration: underline; }
-
-    /* ── Wider screens: the whole layout was tuned mobile-first at 640px,
-       which leaves a lot of dead space either side on a desktop browser.
-       From ~860px up, let the centre column breathe — most noticeably the
-       traffic map, which goes from a small strip to something you can
-       actually read street names on. */
     @media (min-width: 860px) {
       .location-wrap, main { max-width: 960px; }
       .hub-grid { grid-template-columns: repeat(3, 1fr); }
@@ -615,7 +517,6 @@
   </footer>
 
   <script>
-    // ── Location search ──────────────────────────────────────────────────
     function loadSavedLocation() {
       try {
         const raw = localStorage.getItem('cornwallRadarLocation');
@@ -626,14 +527,14 @@
       try { localStorage.setItem('cornwallRadarLocation', JSON.stringify(loc)); } catch (e) {}
     }
 
-    let currentLocation = loadSavedLocation(); // { lat, lon, label } or null = Cornwall-wide default
-    let dashboardData = null; // last-fetched /api/dashboard payload
+    let currentLocation = loadSavedLocation();
+    let dashboardData = null;
     let trafficMapInstance = null;
-    let trafficMapLayers = []; // index-matched to the incidents list, so a list click can find its map layer
+    let trafficMapLayers = [];
     let wildlifeMapInstance = null;
-    let wildlifeMapMarkers = []; // index-matched to the sightings list, same pattern as the traffic map
+    let wildlifeMapMarkers = [];
     let stormOverflowMapInstance = null;
-    let stormOverflowMapMarkers = []; // index-matched to the outfalls list
+    let stormOverflowMapMarkers = [];
 
     function updateLocationStatus() {
       const el = document.getElementById('locationStatus');
@@ -674,9 +575,6 @@
       }
     }
 
-    // Lets a signed-in user jump the main dashboard straight to one of
-    // their saved locations, the same way typing it into the search bar
-    // would — without them having to retype the postcode/town every time.
     function viewSavedLocation(lat, lon, label) {
       currentLocation = { lat, lon, label };
       saveLocation(currentLocation);
@@ -701,8 +599,6 @@
       );
     }
 
-    // ── Main load: fetch once, render the weather hero + the hub grid.
-    // Full lists only get built when a hub card is opened. ────────────────
     async function loadDashboard() {
       try {
         const params = new URLSearchParams();
@@ -724,17 +620,6 @@
       }
     }
 
-    // Fetched separately from the main dashboard aggregation above — this
-    // is Business Directory data (see routes/directory.js's /sponsored
-    // endpoint), not one of the weather/traffic/etc. sources, and rotates
-    // server-side on its own clock (see ROTATION_MS there). Re-fetched
-    // below on a matching timer so a visitor who leaves the page open
-    // actually sees the rotation happen, rather than only getting a
-    // different set of sponsors on their next reload — a paying Featured
-    // business shouldn't rely on visitors refreshing to ever see their
-    // slot. Fails silently (empty strip) rather than showing an error
-    // card — an empty "no sponsors yet" state isn't something a visitor
-    // needs to be told about, unlike a real dashboard source going down.
     async function loadSponsoredStrip() {
       const el = document.getElementById('sponsoredStrip');
       try {
@@ -762,11 +647,6 @@
       }
     }
 
-    // Keeps the sponsored strip in sync with the server's own rotation
-    // window (60s — matches ROTATION_MS in routes/directory.js) so it
-    // visibly changes while someone is sitting on the page, not just
-    // between page loads. Cleared/restarted rather than left to stack up
-    // if loadDashboard ever runs again (e.g. switching saved locations).
     function startSponsoredRotation() {
       if (sponsoredStripInterval) clearInterval(sponsoredStripInterval);
       sponsoredStripInterval = setInterval(loadSponsoredStrip, 60 * 1000);
@@ -835,8 +715,6 @@
         + '</div>';
     }
 
-    // ── Hub cards: one short "calling card" per section, each opening a
-    // full detail view on tap instead of growing the main page forever. ──
     function hubPreview(key) {
       const d = dashboardData || {};
       if (key === 'traffic') {
@@ -918,13 +796,7 @@
         if (!bw || bw.unavailable || !bw.sites || !bw.sites.length) return 'Unavailable right now';
         return bw.sites.length + ' Cornwall beaches — live EA ratings';
       }
-      // Directory isn't part of dashboardData (it's its own public endpoint,
-      // fetched fresh with search/filter params whenever the page opens —
-      // see renderDirectoryDetail), so this preview is just static copy
-      // rather than a live count.
       if (key === 'directory') return 'Find local businesses, or list your own';
-      // Activities/vouchers aren't part of dashboardData either, same reason
-      // as the directory above — their own public endpoint, own filters.
       if (key === 'activities') return 'Search things to do across Cornwall';
       if (key === 'vouchers') return 'Local discounts and offers — free to browse';
       if (key === 'jobs') return 'Roles posted directly by Cornwall businesses';
@@ -943,10 +815,6 @@
       { key: 'wildlife', icon: '🦡', title: 'Wildlife', photo: '/images/wildlife-hero.jpg' },
       { key: 'eventsWhatson', icon: '🎉', title: "Events & What's On", photo: '/images/events.jpg' },
       { key: 'news', icon: '📰', title: 'Cornwall News', photo: '/images/community.jpg' },
-      // No stock photo asset for sport — instead of picking an arbitrary
-      // static image, borrow whatever thumbnail the top story itself
-      // carries (the feed provides one for most stories), same trick the
-      // reference implementation uses for its own photo-forward hub cards.
       { key: 'sport', icon: '⚽', title: 'Cornwall Sport', dynamicPhoto: (d) => d.sport?.items?.[0]?.image || null },
       { key: 'councilNews', icon: '🏛️', title: 'Cornwall Council News', photo: '/images/council-news.jpg' },
       { key: 'trains', icon: '🚆', title: 'Train Times', photo: '/images/trains.jpg' },
@@ -981,10 +849,6 @@
       const panel = document.getElementById('detailPanel');
       panel.hidden = false;
 
-      // The directory isn't part of the once-per-load dashboardData payload
-      // (it's public data with its own search/filter params, refetched on
-      // demand), so it gets its own async render path instead of the
-      // synchronous renderers map below.
       if (key === 'directory') { renderDirectoryDetail(); return; }
       if (key === 'activities') { renderActivitiesDetail(); return; }
       if (key === 'vouchers') { renderVouchersDetail(); return; }
@@ -1006,9 +870,6 @@
         bathingWater: renderBathingWaterDetail,
       };
       const backBtn = '<button class="back-btn" onclick="closeDetail()">← Back</button>';
-      // weatherDetails and eventsWhatson each draw from more than one
-      // top-level field at once, so they get the whole payload instead of
-      // a single dashboardData[key] slice.
       const multiFieldKeys = ['weatherDetails', 'eventsWhatson'];
       const sectionData = multiFieldKeys.includes(key) ? dashboardData : (dashboardData ? dashboardData[key] : null);
       panel.innerHTML = backBtn + renderers[key](sectionData);
@@ -1028,9 +889,6 @@
       document.getElementById('hubGrid').hidden = false;
     }
 
-    // Shared not-configured / error / coming-online states for a section
-    // that hasn't got a live list to show. Returns null when the section
-    // is configured and should be rendered by its own list renderer instead.
     function unavailableState(title, section) {
       if (section && section.configured === false) {
         return '<div class="card"><h2>' + title + '</h2><p class="unavailable">' + section.message + '</p></div>';
@@ -1058,9 +916,6 @@
       if (!t.incidents || t.incidents.length === 0) {
         return '<div class="card"><h2>' + title + '</h2>' + subtitle + notes + mapBlock + '<p class="unavailable">No incidents reported right now — roads look clear</p></div>';
       }
-      // Indices here line up 1:1 with the (unsliced) array initTrafficMap
-      // builds its markers/lines from below, so a click can jump straight
-      // to that incident's own layer on the map above.
       const items = t.incidents.slice(0, 20).map((i, idx) => {
         const badge = i.kind === 'closure' ? '🟠 Closure' : '🔴 Incident';
         const cls = 'traffic-item' + (i.coordinates ? ' clickable' : '');
@@ -1072,12 +927,6 @@
       return '<div class="card"><h2>' + title + '</h2>' + subtitle + notes + mapBlock + items + '</div>';
     }
 
-    // Sets up (or resets) the Leaflet map for the traffic detail view. Base
-    // tiles are plain OpenStreetMap (free, no key, always works); the
-    // TomTom flow-speed overlay is added only if a key is configured —
-    // its absence should never break the map itself. Incident markers/
-    // lines come from data we already fetched via TomTom's incidentDetails
-    // API, so they render even if the flow-tile overlay has any hiccup.
     async function initTrafficMap(t) {
       const mapEl = document.getElementById('trafficMap');
       if (!mapEl) return;
@@ -1100,9 +949,6 @@
         const res = await fetch('/api/tomtom-key');
         const { key } = await res.json();
         if (key) {
-          // No "t" (model id) param — passing an arbitrary value here
-          // breaks every tile request with a 400; it's optional and
-          // TomTom uses its current model when omitted.
           L.tileLayer('https://api.tomtom.com/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.png?key=' + key, {
             opacity: 0.7,
             maxZoom: 19,
@@ -1110,13 +956,10 @@
         }
       } catch (e) { /* flow overlay is a bonus layer — map still works without it */ }
 
-      // Indexed to match renderTrafficDetail's list exactly (same source
-      // array, same order) so a click on a list row can look its marker/
-      // line straight up here and jump the map to it.
       trafficMapLayers = [];
       (t && t.incidents ? t.incidents : []).forEach((inc, idx) => {
         if (!inc.coordinates) return;
-        const color = inc.kind === 'closure' ? '#ea580c' : '#dc2626'; // orange for National Highways closures, red for TomTom incidents
+        const color = inc.kind === 'closure' ? '#ea580c' : '#dc2626';
         const label = (inc.kind === 'closure' ? 'Closure: ' : 'Incident: ') + inc.description;
         if (inc.geometryType === 'LineString') {
           const latlngs = inc.coordinates.map((c) => [c[1], c[0]]);
@@ -1128,9 +971,6 @@
       });
     }
 
-    // Called when a traffic list row is clicked — pans/zooms the map to
-    // that incident's own marker or line and pops its label open, instead
-    // of leaving the map and the list feeling like two disconnected things.
     function focusTrafficIncident(idx) {
       if (!trafficMapInstance) return;
       const layer = trafficMapLayers[idx];
@@ -1144,11 +984,6 @@
       document.getElementById('trafficMap')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
-    // All sightings come from GBIF already filtered to Cornwall's bounding
-    // box, so a plain OpenStreetMap tile layer with one marker per sighting
-    // is enough to show where in Cornwall each was actually spotted —
-    // same Leaflet setup as the traffic map above, just simpler (no lines,
-    // no live overlay, just points).
     function initWildlifeMap(wl) {
       const mapEl = document.getElementById('wildlifeMap');
       if (!mapEl) return;
@@ -1162,7 +997,7 @@
       const located = sightings.filter(s => s.lat != null && s.lon != null);
       const center = located.length
         ? { lat: located[0].lat, lon: located[0].lon }
-        : { lat: 50.2632, lon: -5.0510 }; // Cornwall-wide fallback when nothing has coordinates
+        : { lat: 50.2632, lon: -5.0510 };
 
       const map = L.map('wildlifeMap').setView([center.lat, center.lon], located.length ? 10 : 9);
       wildlifeMapInstance = map;
@@ -1172,8 +1007,6 @@
         maxZoom: 19,
       }).addTo(map);
 
-      // Indexed to match renderWildlifeDetail's own sightings.slice(0, 15)
-      // exactly, so clicking a list row can jump straight to its own marker.
       wildlifeMapMarkers = [];
       sightings.forEach((s, idx) => {
         if (s.lat == null || s.lon == null) return;
@@ -1181,10 +1014,6 @@
         const marker = L.circleMarker([s.lat, s.lon], {
           radius: 7, color: '#15803d', fillColor: '#22c55e', fillOpacity: 0.85,
         }).addTo(map).bindPopup(label);
-        // Hover shows which bird (etc.) was spotted there without needing a
-        // click first; a real click (from the marker itself, or from
-        // focusWildlifeSighting below) still opens/keeps the popup so it
-        // doesn't vanish the moment the mouse moves off.
         marker.on('mouseover', () => marker.openPopup());
         marker.on('mouseout', () => marker.closePopup());
         wildlifeMapMarkers[idx] = marker;
@@ -1196,8 +1025,6 @@
       }
     }
 
-    // Called when a sighting row is clicked — same pan/zoom/popup pattern
-    // as focusTrafficIncident above, so the map and list feel connected.
     function focusWildlifeSighting(idx) {
       if (!wildlifeMapInstance) return;
       const marker = wildlifeMapMarkers[idx];
@@ -1258,33 +1085,16 @@
     }
 
     function renderWildlifeDetail(wl) {
-      // The bird in this photo has its head in the upper third of the
-      // frame, and the default centred object-fit crop was cutting straight
-      // through it on the wide banner aspect ratio — bias the crop upward
-      // so the whole head stays in frame.
       const banner = '<img class="card-banner" src="/images/wildlife-hero.jpg" alt="" style="object-position: 50% 22%;" />';
       if (!wl || wl.unavailable || !wl.sightings || wl.sightings.length === 0) {
         return '<div class="card">' + banner + '<h2>🦡 Wildlife Sightings</h2><p class="unavailable">No recent sightings available right now</p></div>';
       }
-      // Every sighting GBIF gives us is already inside Cornwall's bounding
-      // box (see wildlife.js), so plotting them together shows at a glance
-      // where in Cornwall things are actually being spotted, not just a list
-      // of names with nothing to place them on the map.
       const sightings = wl.sightings.slice(0, 15);
       const anyLocated = sightings.some(s => s.lat != null && s.lon != null);
       const mapBlock = anyLocated
         ? '<div id="wildlifeMap"></div><p class="map-legend">🟢 sighting location — click a sighting below to jump to it</p>'
         : '';
-      // Indices here line up 1:1 with the same sightings array initWildlifeMap
-      // builds its markers from, so a click can jump straight to that
-      // sighting's own marker on the map above (same pattern as the traffic
-      // list/map link).
       const items = sightings.map((s, idx) => {
-        // Species name links to GBIF's species page (background, photos,
-        // taxonomy) when GBIF gave us one; the location links to a map of
-        // exactly where this sighting was logged. Neither existed before —
-        // a sighting with no coordinates and no species key just stays as
-        // plain text rather than link to nowhere.
         const speciesLabel = s.gbifSpeciesKey
           ? '<a href="https://www.gbif.org/species/' + s.gbifSpeciesKey + '" target="_blank">' + s.species + '</a>'
           : s.species;
@@ -1303,11 +1113,6 @@
       return '<div class="card">' + banner + '<h2>🦡 Wildlife Sightings</h2>' + mapBlock + items + '</div>';
     }
 
-    // Weather Details — a second, separate page from the top-of-page hero.
-    // The hero stays the fast at-a-glance read (Open-Meteo, always on); this
-    // page is for someone who wants to dig further: the full multi-day
-    // forecast, plus pollen counts and extra current-conditions stats from
-    // the Google APIs, both of which only appear once GOOGLE_MAPS_API_KEY is set.
     function pollenCategoryClass(category) {
       if (!category) return 'pollen-none';
       const c = category.toLowerCase();
@@ -1318,15 +1123,6 @@
       return 'pollen-none';
     }
 
-    // World Clock — a small strip on the Weather Details page for checking
-    // the time in a handful of other places (handy when Cornwall gets
-    // visitors, or has family/friends, elsewhere in the world). This runs
-    // entirely on the browser's own built-in timezone database (Intl), so
-    // unlike the rest of this page it needs no API key, no network call, and
-    // can't go down or run out of quota — a fixed list of cities doesn't
-    // need a per-request geocoded lookup, so the Google Time Zone API isn't
-    // actually needed here (it stays useful only if this ever needs the
-    // timezone for an arbitrary searched location rather than a fixed list).
     const WORLD_CLOCK_CITIES = [
       { label: 'Cornwall', tz: 'Europe/London' },
       { label: 'New York', tz: 'America/New_York' },
@@ -1352,11 +1148,6 @@
       }).join('');
     }
 
-    // Lives on the main page itself, right under the weather hero, rather
-    // than tucked inside the Weather Details page — it's meant to be seen
-    // at a glance, not found by clicking in. It's rebuilt fresh on every
-    // loadDashboard() call and then just ticks over locally every 30s
-    // (only the numbers need to refresh — no server round-trip involved).
     function renderWorldClockCard() {
       return '<div class="card"><h2>🕐 World Clock</h2><div class="worldclock-grid" id="worldClockGrid">' + worldClockItemsHtml() + '</div></div>';
     }
@@ -1439,12 +1230,6 @@
       return '<div class="card">' + banner + '<h2>' + title + '</h2>' + pollenBlock + extraBlock + forecastBlock + '</div>';
     }
 
-    // Events & What's On — two independent sources on one page, matching a
-    // separately-run project's own layout: an always-on, free, keyless
-    // "What's On" photo feed (Cornwall Live's dedicated RSS feed) plus an
-    // optional grid of ticketed events (Ticketmaster, grouped by month)
-    // that only appears once that key is set. Eventbrite was tried too but
-    // its public search API has been shut off for standard keys since 2020.
     function renderEventsWhatsonDetail(d) {
       const title = "🎉 Events & What's On";
       if (!d) return '<div class="card"><h2>' + title + '</h2><p class="unavailable">Unavailable right now</p></div>';
@@ -1462,11 +1247,12 @@
           const img = item.image
             ? '<img class="feed-card-img" src="' + item.image + '" alt="" loading="lazy" />'
             : '<div class="feed-card-img-placeholder">🎉</div>';
+          const meta = [item.date, item.source ? 'via ' + item.source : null].filter(Boolean).join(' · ');
           return '<a class="feed-card" href="' + item.link + '" target="_blank">'
             + img
             + '<div class="feed-card-body">'
             + '<div class="feed-card-title">' + item.title + '</div>'
-            + (item.date ? '<div class="feed-card-date">' + item.date + '</div>' : '')
+            + (meta ? '<div class="feed-card-date">' + meta + '</div>' : '')
             + '</div></a>';
         }).join('');
         whatsonBlock = '<h3 class="wd-subhead">What\'s On in Cornwall</h3><div class="feed-grid">' + cards + '</div>';
@@ -1518,9 +1304,6 @@
       if (!n || !n.items || n.items.length === 0) {
         return '<div class="card"><h2>' + title + '</h2><p class="unavailable">No stories available right now</p></div>';
       }
-      // Photo-card grid, matching the What's On feed — Cornwall Live's RSS
-      // carries a thumbnail per story (see news.js), so this no longer
-      // needs to fall back to a plain text list the way it used to.
       const cards = n.items.slice(0, 15).map(i => {
         const img = i.image
           ? '<img class="feed-card-img" src="' + i.image + '" alt="" loading="lazy" />'
@@ -1529,6 +1312,7 @@
           + img
           + '<div class="feed-card-body">'
           + '<div class="feed-card-title">' + i.title + '</div>'
+          + (i.source ? '<div class="feed-card-date">via ' + i.source + '</div>' : '')
           + '</div></a>';
       }).join('');
       return '<div class="card"><h2>' + title + '</h2><div class="feed-grid">' + cards + '</div></div>';
@@ -1547,6 +1331,7 @@
           + img
           + '<div class="feed-card-body">'
           + '<div class="feed-card-title">' + i.title + '</div>'
+          + (i.source ? '<div class="feed-card-date">via ' + i.source + '</div>' : '')
           + '</div></a>';
       }).join('');
       return '<div class="card"><h2>' + title + '</h2><div class="feed-grid">' + cards + '</div></div>';
@@ -1633,9 +1418,6 @@
       const mapBlock = anyLocated
         ? '<div id="stormOverflowMap"></div><p class="map-legend">🔴 discharging · 🟢 not discharging · ⚪ offline / no data — click an outfall below to jump to it</p>'
         : '';
-      // Indexed to match initStormOverflowMap's own marker array exactly
-      // (same source array, same order), same click-to-focus pattern as
-      // traffic and wildlife above.
       const items = so.outfalls.map((o, idx) => {
         const cls = overflowStatusClass(o.status);
         const hasCoords = o.lat != null && o.lon != null;
@@ -1658,9 +1440,6 @@
       return '<div class="card">' + banner + '<h2>' + title + '</h2>' + summary + mapBlock + items + '</div>';
     }
 
-    // Same Leaflet setup as initWildlifeMap — every outfall already comes
-    // with a lat/lon from South West Water's own feed, so points on a map
-    // straight away, colour-coded to match the status badges in the list.
     function initStormOverflowMap(so) {
       const mapEl = document.getElementById('stormOverflowMap');
       if (!mapEl) return;
@@ -1763,16 +1542,6 @@
         + '</div>';
     }
 
-    // Each site's live classification and pollution-risk data comes from
-    // the Environment Agency's own official embeddable widget, loaded
-    // straight into the visitor's browser as an iframe — not fetched by
-    // this app's server. That's a deliberate choice, not a shortcut: the
-    // EA's Linked Data API sits behind a gateway that blocks server-to-
-    // server requests to this one sub-service with a bare 403 (see
-    // bathingWater.js for the full story), so re-fetching and re-drawing
-    // this data ourselves kept breaking. The widget is the EA's own
-    // display, always current, and immune to that block since it's the
-    // visitor loading it, not us.
     function renderBathingWaterDetail(bw) {
       const banner = '<img class="card-banner" src="/images/bathing-water.jpg" alt="" />';
       const title = '🏖️ Bathing Water Quality';
@@ -1799,20 +1568,8 @@
       });
     }
 
-    // ── Business Directory (Phase 3) — public, no sign-in required. A
-    // fresh GET /api/directory on every open/search/filter rather than
-    // dashboardData, since this is independent of the weather/traffic/etc.
-    // aggregation and needs its own query params. Managing your OWN listing
-    // (create/edit/Feature) lives in the account panel further down, since
-    // that needs the signed-in user's session the same way saved locations
-    // and the digest do. ─────────────────────────────────────────────────
     let directoryFilters = { q: '', category: '' };
 
-    // Fetched once and memoized — the fixed category list barely ever
-    // changes, so there's no reason to re-fetch it every time the
-    // directory or the "list your business" form is opened. Both use this
-    // exact same list (server-side source of truth: lib/businessCategories.js)
-    // so a category can never drift into free text again.
     let businessCategoriesPromise = null;
     function getBusinessCategories() {
       if (!businessCategoriesPromise) {
@@ -1847,9 +1604,6 @@
       }
 
       panel.innerHTML = backBtn + renderDirectoryCard(data, categories);
-      // Re-focus the search box and put the cursor back at the end after a
-      // re-render, so typing a search term doesn't feel like it keeps
-      // losing focus after every keystroke-triggered refresh.
       const input = document.getElementById('directorySearchInput');
       if (input && document.activeElement !== input) {
         input.focus();
@@ -1861,9 +1615,6 @@
     function onDirectorySearchInput(value) {
       directoryFilters.q = value;
       clearTimeout(directorySearchTimer);
-      // Debounced rather than firing a request on every keystroke — same
-      // "don't hammer the API while someone's still typing" idea as any
-      // live-search box.
       directorySearchTimer = setTimeout(renderDirectoryDetail, 350);
     }
     function onDirectoryCategoryChange(value) {
@@ -1871,11 +1622,6 @@
       renderDirectoryDetail();
     }
 
-    // Reviews are shown inline, one directory row at a time (expanding a
-    // second closes the first — expandedReviewsFor holds at most one id) —
-    // simpler than a separate per-business detail page, and consistent with
-    // how this directory already re-renders the whole list on every filter
-    // change rather than patching individual rows.
     async function toggleReviews(businessId) {
       if (expandedReviewsFor === businessId) {
         expandedReviewsFor = null;
@@ -1887,10 +1633,6 @@
       renderDirectoryDetail();
     }
 
-    // Public reviews + average (routes/directory.js) are fetched regardless
-    // of sign-in; "my review" (routes/reviews.js, requires auth) is only
-    // fetched when someone's actually signed in, so a logged-out visitor can
-    // still read reviews and just doesn't see the leave-a-review form.
     async function loadReviewsFor(businessId, force) {
       if (reviewsCache[businessId] && !force) return;
       let reviews = [], avgRating = null, reviewCount = 0, myReview = null, isSignedIn = false;
@@ -1978,27 +1720,12 @@
       return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     }
 
-    // A business owner types "trustedtech.uk.com", not
-    // "https://trustedtech.uk.com" — the PUT /listing save now normalizes
-    // that server-side (see business.js's normalizeWebsiteUrl), but rows
-    // saved before that fix still have the bare form sitting in the
-    // database. Without a scheme, `<a href="trustedtech.uk.com">` is a
-    // RELATIVE link, so clicking it on cornwallradar.co.uk requests
-    // cornwallradar.co.uk/trustedtech.uk.com from our own server and hits
-    // Express's "Cannot GET" 404 instead of leaving the site. Normalizing
-    // again here means existing listings start working immediately, without
-    // waiting for every business owner to re-save their listing.
     function normalizeWebsiteUrl(raw) {
       const trimmed = (raw || '').trim();
       if (!trimmed) return '';
       return /^https?:\/\//i.test(trimmed) ? trimmed : 'https://' + trimmed;
     }
 
-    // Shared by the full Business Directory, the Days Out & Activities view,
-    // and the Vouchers & Offers view — all three list the same kind of
-    // `businesses` rows from routes/directory.js, just with different
-    // filters applied server-side, so one row renderer covers all of them
-    // rather than three near-duplicate copies drifting out of sync.
     function renderDirectoryRow(b) {
       const phoneLine = b.phone ? '<a href="tel:' + b.phone.replace(/\s+/g, '') + '">' + b.phone + '</a>' : '';
       const siteUrl = normalizeWebsiteUrl(b.website);
@@ -2006,9 +1733,6 @@
       const distLine = b.distanceKm != null ? b.distanceKm + 'km away' : null;
       const meta = [distLine, phoneLine, siteLine].filter(Boolean).join(' · ');
       const logo = b.logo_url ? '<img src="' + b.logo_url + '" alt="" class="directory-row-logo" />' : '';
-      // Rating line is always a link — even with zero reviews yet — so
-      // "be the first to review" is one click away right from the list,
-      // rather than only reachable once someone else has already left one.
       const ratingText = b.reviewCount
         ? '★ ' + b.avgRating + ' (' + b.reviewCount + (b.reviewCount === 1 ? ' review' : ' reviews') + ')'
         : 'No reviews yet';
@@ -2077,18 +1801,6 @@
         + '</div>';
     }
 
-    // ── Days Out & Activities — "things to do" for locals/visitors,
-    // reusing the same businesses table/directory endpoint as the Business
-    // Directory above, just pre-filtered to the "Attractions" and
-    // "Activities" categories (see lib/businessCategories.js) instead of
-    // offering every category. Split into two categories rather than one
-    // catch-all "Days Out & Attractions" so browsing/filtering matches how
-    // people actually think about it (a static attraction vs. a hands-on
-    // activity) — a category filter here narrows to just one of the two,
-    // same idea as the main directory's category dropdown, or leave it on
-    // "Both" to see everything under this card. Attraction/activity
-    // providers list themselves exactly the same way any other business
-    // does, from the account panel.
     const ACTIVITIES_CATEGORIES = ['Attractions', 'Activities'];
     let activitiesFilters = { q: '', category: '' };
 
@@ -2164,10 +1876,6 @@
         + '</div>';
     }
 
-    // ── Vouchers & Offers — every listing (any category) that currently has
-    // a live voucher (routes/directory.js's ?voucher=1, which also drops
-    // any that have passed their expiry date). Open to everyone, not paid-
-    // tier-gated — see the Cornwall Radar decision this was built against.
     let vouchersFilters = { q: '' };
 
     async function renderVouchersDetail() {
@@ -2233,18 +1941,7 @@
         + '</div>';
     }
 
-    // ── Local Jobs — vacancies posted directly by businesses in the
-    // directory (routes/business.js's /api/business/vacancies), browsed
-    // publicly via routes/directory.js's GET /vacancies. Deliberately no
-    // category filter here, only keyword search — a business's own
-    // directory category (Food & Drink, Trades & Home Services, ...)
-    // doesn't map onto how someone searches for a job (see README).
     let jobsFilters = { q: '' };
-    // Which single Adzuna page (50 jobs each) is currently showing — real
-    // page-number navigation rather than an ever-growing "load more" list,
-    // since Adzuna itself serves results one page at a time anyway. Resets
-    // to page 1 whenever the search term changes, so a fresh search doesn't
-    // start out on whatever page a previous, unrelated search was left on.
     let jobsExternalPage = 1;
 
     async function renderJobsDetail() {
@@ -2264,9 +1961,6 @@
         data = { configured: true, vacancies: [], error: err.message };
       }
 
-      // Keep local state in sync with whatever the backend actually served
-      // (it clamps out-of-range page numbers), so the pagination controls
-      // never show a page number the results don't match.
       if (data && data.externalJobsPage) jobsExternalPage = data.externalJobsPage;
 
       panel.innerHTML = backBtn + renderJobsCard(data);
@@ -2277,10 +1971,6 @@
       }
     }
 
-    // Just tracks what's been typed as the person types — doesn't search on
-    // every keystroke. The actual search only runs when they press Enter or
-    // click the Search button (onJobsSearchSubmit below), so typing "chef"
-    // doesn't fire a search after "c", then "ch", then "che"...
     function onJobsSearchInput(value) {
       jobsFilters.q = value;
     }
@@ -2293,28 +1983,15 @@
     }
 
     function onJobsSearchSubmit() {
-      jobsExternalPage = 1; // new search — start back on page 1, not wherever the last search left off
+      jobsExternalPage = 1;
       renderJobsDetail();
     }
 
-    // Called from the pagination "Previous"/"Next" buttons under the Adzuna
-    // section. renderJobsDetail already reads jobsExternalPage via the
-    // params.set() above, so setting it and re-calling is all this needs.
     function goToExternalJobsPage(page) {
       jobsExternalPage = Math.max(1, page);
       renderJobsDetail();
     }
 
-    // A vacancy's "Apply" link is whichever the business gave — an email
-    // (mailto:) or their own application page — Cornwall Radar never
-    // collects the application itself (see business.js's
-    // validateVacancyInput: at least one of the two is always present).
-    // `source` distinguishes a role posted directly by a Cornwall Radar
-    // business from one pulled in live from Adzuna's wider Cornwall jobs
-    // feed (routes/directory.js) — an external one has no logo/postcode/
-    // distance of its own, just whatever location string Adzuna gave, and
-    // gets a small "via Adzuna" tag so it's never mistaken for a directory
-    // listing's own posting.
     function renderJobRow(v) {
       const isExternal = v.source === 'external';
       const applyHref = v.applyUrl || (v.applyEmail ? 'mailto:' + v.applyEmail : null);
@@ -2349,9 +2026,6 @@
         + '</div>';
 
       const vacancies = (data && data.vacancies) || [];
-      // Grouped into two clearly-labelled blocks rather than one interleaved
-      // list — a business-posted role and an Adzuna one are never mixed
-      // together unlabelled, on top of each row's own colour-coded badge.
       const localJobs = vacancies.filter((v) => v.source !== 'external');
       const externalJobs = vacancies.filter((v) => v.source === 'external');
 
@@ -2363,11 +2037,6 @@
       } else if (!vacancies.length) {
         body = '<p class="account-note">No roles listed right now' + (jobsFilters.q ? ' matching that search.' : ' — check back soon.') + '</p>';
       } else {
-        // Previous/Next page-number controls for the Adzuna section only —
-        // the business-posted section above never needs paging, there just
-        // aren't enough of those to need it. Previous shows once we're past
-        // page 1; Next shows only when the backend confirms another full
-        // page is actually waiting (data.externalJobsHasMore).
         const currentPage = data.externalJobsPage || jobsExternalPage;
         const pagerBtns = []
           .concat(currentPage > 1 ? ['<button class="btn-secondary" onclick="goToExternalJobsPage(' + (currentPage - 1) + ')">← Previous</button>'] : [])
@@ -2393,26 +2062,19 @@
         + '</div>';
     }
 
-    // ── Account panel (Phase 1.5: sign-in, saved locations, morning
-    // digest, billing) — a separate top-level panel from #app/#detailPanel
-    // above, since its data (who's signed in, their own locations) has
-    // nothing to do with dashboardData. Talks to Supabase directly for
-    // auth (magic link) and to this project's own /api/account + /api/billing
-    // routes — using the signed-in user's Supabase access token — for
-    // everything else. ─────────────────────────────────────────────────────
-    let sb = null;               // Supabase client, null until configured
-    let publicConfig = null;     // { supabaseUrl, supabaseAnonKey } from /api/public-config
-    let accountData = null;      // last-fetched /api/account/me payload
-    let businessData = null;     // last-fetched /api/business/me payload's `business` (or null)
-    let businessCategories = []; // last-fetched fixed category list, for the listing form's dropdown
-    let passwordRecoveryMode = false; // true after arriving via a "reset your password" email link, until a new password is saved
-    let businessReviews = [];    // last-fetched /api/business/reviews payload, for the account panel's "your listing" reply UI
-    let businessVacancies = []; // last-fetched /api/business/vacancies payload, for the account panel's "your vacancies" list
-    let expandedReviewsFor = null; // businessId of the one directory row currently showing its reviews panel, or null
-    let reviewsCache = {};       // businessId -> { reviews, avgRating, reviewCount, myReview, isSignedIn }, filled by loadReviewsFor
-    let adminBusinesses = null;  // last-fetched /api/admin/businesses payload, or null if this account isn't the admin (403) — see renderAdminCard
-    let adminReviews = null;     // last-fetched /api/admin/reviews payload, or null if this account isn't the admin (403) — see renderAdminCard
-    let alertPreferences = [];   // last-fetched /api/alerts payload — one row per (location, alert type) the consumer has set up
+    let sb = null;
+    let publicConfig = null;
+    let accountData = null;
+    let businessData = null;
+    let businessCategories = [];
+    let passwordRecoveryMode = false;
+    let businessReviews = [];
+    let businessVacancies = [];
+    let expandedReviewsFor = null;
+    let reviewsCache = {};
+    let adminBusinesses = null;
+    let adminReviews = null;
+    let alertPreferences = [];
 
     async function initAccount() {
       try {
@@ -2425,21 +2087,11 @@
       if (publicConfig.supabaseUrl && publicConfig.supabaseAnonKey && window.supabase) {
         sb = window.supabase.createClient(publicConfig.supabaseUrl, publicConfig.supabaseAnonKey);
         sb.auth.onAuthStateChange((event) => {
-          // Fires when someone arrives via the "reset your password" email
-          // link — Supabase signs them into a short-lived recovery session
-          // automatically. Force the account panel open (it's usually
-          // still hidden at this point, since this is a fresh page load
-          // from an email link, not a click on the account button) and
-          // show the "set a new password" card instead of whatever else
-          // might otherwise render for a freshly-signed-in session.
           if (event === 'PASSWORD_RECOVERY') {
             passwordRecoveryMode = true;
             openAccountPanel();
             return;
           }
-          // Otherwise (magic-link redirect completing, sign-in, sign-out,
-          // MFA challenge verified, etc.) — simplest correct behaviour is
-          // just re-rendering whatever's currently open.
           if (!document.getElementById('accountPanel').hidden) renderAccountPanel();
           updateAccountButtonLabel();
         });
@@ -2451,17 +2103,6 @@
         if (panel.hidden) openAccountPanel(); else closeAccountPanel();
       });
 
-      // Land back on the account panel (not the dashboard) after a Stripe
-      // Checkout redirect, so the new "Paid"/"Featured" status is the first
-      // thing seen — covers both the consumer (?billing=) and business
-      // (?businessBilling=) checkout flows, which use separate query params
-      // since they're separate Stripe Prices/subscriptions (see billing.js
-      // and business.js's success_url/cancel_url). `?listBusiness=1` is the
-      // same trick used by the "List your business free" links on the
-      // server-rendered SEO directory pages (routes/seoPages.js) — those
-      // pages are static HTML with no access to this app's JS functions, so
-      // a plain link with this query param is how they hand off into
-      // actually opening the sign-in/listing form here.
       const params = new URLSearchParams(window.location.search);
       if (params.get('billing') || params.get('businessBilling') || params.get('listBusiness')) openAccountPanel();
     }
@@ -2478,11 +2119,6 @@
       updateAccountButtonLabel();
     }
 
-    // Keeps the header button's text in sync with whether anyone's signed
-    // in, so it reads "Sign in" (the discoverable call-to-action a first-time
-    // visitor needs) until there's an actual session, then switches to
-    // "Account" once there is one. Cheap to call often — getSession() reads
-    // the already-stored session rather than making a network round trip.
     async function updateAccountButtonLabel() {
       const label = document.getElementById('accountBtnLabel');
       if (!label) return;
@@ -2491,10 +2127,6 @@
       label.textContent = session ? 'Account' : 'Sign in';
     }
 
-    // Attaches the signed-in user's Supabase access token to a request
-    // against this project's own backend — every /api/account/* and
-    // /api/billing/* route (other than the Stripe webhook itself) requires
-    // this rather than trusting anything the client claims about who it is.
     async function authedFetch(path, options = {}) {
       if (!sb) throw new Error('Accounts are not set up on this server yet');
       const { data: { session } } = await sb.auth.getSession();
@@ -2509,10 +2141,6 @@
       return body;
     }
 
-    // Same as authedFetch but for a multipart file upload (the business
-    // logo) — deliberately does NOT set Content-Type itself, since the
-    // browser needs to set that header with its own multipart boundary
-    // string; setting it manually here would produce a malformed request.
     async function authedUpload(path, formData) {
       if (!sb) throw new Error('Accounts are not set up on this server yet');
       const { data: { session } } = await sb.auth.getSession();
@@ -2538,12 +2166,6 @@
         return;
       }
 
-      // Set-a-new-password step of the "forgot password" flow takes over
-      // the whole panel until it's done — checked before the normal
-      // session check below since Supabase's recovery link DOES sign the
-      // person in (to a short-lived recovery session), so without this
-      // they'd otherwise land straight in their normal signed-in account
-      // instead of being asked to actually pick a new password.
       if (passwordRecoveryMode) {
         panel.innerHTML = backBtn + msgSlot + renderPasswordRecoveryCard();
         return;
@@ -2555,17 +2177,6 @@
         return;
       }
 
-      // MFA step-up gate. An account with a verified authenticator app
-      // (see renderMfaCard below) signs in at aal1 same as anyone else —
-      // Supabase separates "who are you" from "have you also proven it
-      // with your second factor this session". nextLevel !== currentLevel
-      // means a second factor exists and hasn't been satisfied yet, so the
-      // code-entry card is shown instead of the account data itself.
-      // requireAuth.js enforces the same thing server-side, so this isn't
-      // just a UI nicety being relied on for security — it's what makes
-      // the flow feel right, while the backend is what actually matters.
-      // Checked every time the panel opens (not just right after sign-in),
-      // since a browser tab can sit open with an unchallenged session.
       const { data: aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
       if (aal && aal.nextLevel === 'aal2' && aal.currentLevel !== aal.nextLevel) {
         panel.innerHTML = backBtn + msgSlot + renderMfaChallengeCard();
@@ -2574,18 +2185,6 @@
 
       panel.innerHTML = backBtn + msgSlot + '<div class="card"><p class="account-note">Loading your account…</p></div>';
       try {
-        // Consumer account, business listing and MFA factor status are all
-        // independent of each other — fetched together so one slow or
-        // failing call doesn't hold up the others. Business/MFA are both
-        // genuinely optional (most consumers use neither), so their own
-        // failure degrades to "none" rather than blocking the whole panel.
-        // Admin-panel data (adminBusinessesResp/adminReviewsResp) is fetched
-        // for EVERY signed-in user, not just Ady — the server-side
-        // requireAdmin check (middleware/requireAdmin.js) is what actually
-        // gates it, rejecting with 403 for anyone else. That 403 is caught
-        // here into `null`, which is how renderAdminCard tells "not an
-        // admin, don't show this card at all" apart from "admin, but
-        // nothing to moderate yet".
         const [account, businessResp, categories, factorsResp, reviewsResp, vacanciesResp, adminBusinessesResp, adminReviewsResp, alertsResp] = await Promise.all([
           authedFetch('/api/account/me'),
           authedFetch('/api/business/me').catch(() => ({ business: null })),
@@ -2617,16 +2216,8 @@
       if (slot) slot.innerHTML = '<div class="card"><p class="account-error">' + message + '</p></div>';
     }
 
-    // Password sign-in is an ALTERNATIVE to the magic link, not a
-    // replacement — both hit the same Supabase Auth user record for a
-    // given email, so someone can start with a magic link and add a
-    // password later (see the "Set or change your password" field in
-    // renderAccountCards), or sign up with a password from the start.
-    // These two bits of UI state just control which form the login card
-    // shows; they reset to the default whenever the card is re-rendered
-    // from scratch (e.g. after signing out).
-    let loginMode = 'magiclink';   // 'magiclink' | 'password' | 'reset'
-    let passwordAction = 'signin'; // 'signin' | 'signup' — only shown in password mode
+    let loginMode = 'magiclink';
+    let passwordAction = 'signin';
 
     function renderLoginCard() {
       const existingEmail = document.getElementById('loginEmail');
@@ -2640,10 +2231,6 @@
           + '<button class="btn-primary" onclick="sendMagicLink()">Send me a sign-in link</button>';
         modeToggle = '<p class="account-note" style="margin-top:14px;">Prefer a password? <a href="#" onclick="switchLoginMode(\'password\'); return false;">Use a password instead</a></p>';
       } else if (loginMode === 'reset') {
-        // Supabase's own password-recovery flow: this just requests the
-        // email; the actual "pick a new password" step happens after the
-        // person clicks the link they're sent, handled separately by the
-        // PASSWORD_RECOVERY auth event (see initAccount/renderPasswordRecoveryCard).
         body = '<p class="account-note" style="margin:0 0 10px;">We’ll email you a link to set a new password.</p>'
           + '<div class="account-field"><label>Email address</label>'
           + '<input type="email" id="loginEmail" placeholder="you@example.com" value="' + emailValue.replace(/"/g, '&quot;') + '" /></div>'
@@ -2674,10 +2261,6 @@
         + '</div>';
     }
 
-    // Re-renders just the login card in place (used by the mode/action
-    // toggle links above) rather than the full renderAccountPanel, since
-    // that would re-check the session and briefly flash "Loading…" for no
-    // reason — nothing about the sign-in state has actually changed yet.
     function refreshLoginCard() {
       const panel = document.getElementById('accountPanel');
       const backBtn = '<button class="back-btn" onclick="closeAccountPanel()">← Back</button>';
@@ -2709,9 +2292,6 @@
       const { error } = await sb.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin,
       });
-      // Same "don't reveal who's registered" behaviour as sign-up — Supabase
-      // returns success here regardless of whether the email has an
-      // account, so the message is worded to cover both cases honestly.
       status.innerHTML = error
         ? '<p class="account-error">' + error.message + '</p>'
         : '<p class="account-success">If that email has an account, a reset link is on its way.</p>';
@@ -2724,9 +2304,6 @@
       if (!email || !password) { status.innerHTML = '<p class="account-error">Enter your email and password</p>'; return; }
       status.innerHTML = '<p class="account-note">Signing in…</p>';
       const { error } = await sb.auth.signInWithPassword({ email, password });
-      // On success there's nothing to do here — the onAuthStateChange
-      // listener registered in initAccount() already re-renders the panel
-      // into the signed-in view. Only the failure case needs handling.
       if (error) {
         status.innerHTML = '<p class="account-error">' + (error.message === 'Invalid login credentials'
           ? 'Incorrect email or password.'
@@ -2750,14 +2327,6 @@
         status.innerHTML = '<p class="account-error">' + error.message + '</p>';
         return;
       }
-      // Supabase deliberately returns the same "success, check your email"
-      // shape whether this email is brand new or already has an account
-      // (so the response can't be used to check who's registered) — and
-      // whether a session comes back immediately depends on the Supabase
-      // project's "Confirm email" setting, which this app doesn't control.
-      // Either way, if a session DID come back, onAuthStateChange handles
-      // showing the signed-in view — this message only covers the
-      // "needs confirming" case.
       if (!data.session) {
         status.innerHTML = '<p class="account-success">Check your email to confirm your account. (Already signed up? Use "Sign in" above instead.)</p>';
       }
@@ -2765,11 +2334,6 @@
 
     async function signOut() {
       await sb.auth.signOut();
-      // Both are per-session UI state, not something that should survive
-      // into the next person who signs in on this same browser/tab: a
-      // half-finished MFA enrollment (QR shown, code not yet entered), and
-      // a stale "come back to set a new password" flag from a recovery
-      // link that was abandoned without saving one.
       mfaEnrollment = null;
       passwordRecoveryMode = false;
       renderAccountPanel();
@@ -2790,11 +2354,6 @@
         + ' <button class="btn-secondary" onclick="signOut()" style="margin-left:8px;">Sign out</button>'
         + '</div>';
 
-      // Lets a magic-link-only account add a password (so future sign-ins
-      // don't need an email round trip), or change one already set — same
-      // field either way, since there's no reliable client-side way to
-      // tell Supabase Auth "this account has no password yet" from a
-      // magic-link sign-in alone (both look the same auth-provider-wise).
       const passwordCard = '<div class="card"><h2>🔒 Password</h2>'
         + '<p class="account-note">Set or change your password so you can sign in with it instead of a magic link.</p>'
         + '<div class="account-field"><label>New password</label>'
@@ -2825,13 +2384,6 @@
       return profileCard + passwordCard + (mfaCardHtml || '') + locationsCard + alertCards;
     }
 
-    // ── Alert preferences — morning digest, traffic, weather, wildlife.
-    // All four share one shape (routes/alerts.js): a list of saved-location
-    // rows the consumer has turned this alert on for, plus a form to add
-    // another. Two types need extra fields beyond a single location: the
-    // digest needs a "send at" hour (needsHour), and traffic needs a SECOND
-    // location — a genuine A-to-B route, not just a radius around one spot
-    // (needsRoute) — plus a delay threshold.
     const ALERT_TYPE_ORDER = ['morning_digest', 'traffic_route', 'weather_warning', 'wildlife_nearby'];
     const ALERT_TYPE_META = {
       morning_digest: {
@@ -2873,10 +2425,6 @@
       }
 
       const prefsForType = alertPreferences.filter((p) => p.alertType === type);
-      // Only morning_digest (sendHour) and traffic_route (delayThresholdMinutes)
-      // have an editable field — weather_warning/wildlife_nearby take no
-      // config yet, so they get no Edit button at all rather than one that
-      // opens a form with nothing in it.
       const rows = prefsForType.map((p) => {
         let label = p.locationLabel;
         if (meta.needsRoute) {
@@ -2919,11 +2467,6 @@
 
       let addForm;
       if (meta.needsRoute) {
-        // Both dropdowns offer every saved location (unlike the other
-        // three types below) — home→work and home→gym are both valid,
-        // distinct route alerts sharing the same origin, so filtering by
-        // "already used" doesn't make sense here. The backend still
-        // rejects an exact duplicate origin+destination pair (409).
         const locationOptions = locations.map((loc) => '<option value="' + loc.id + '">' + loc.label + '</option>').join('');
         const thresholdOptions = DELAY_THRESHOLD_OPTIONS.map((m) => '<option value="' + m + '"' + (m === 10 ? ' selected' : '') + '>' + m + ' min</option>').join('');
         addForm = '<div class="account-field"><label>From</label><select id="newAlertLocation-' + type + '">' + locationOptions + '</select></div>'
@@ -2931,10 +2474,6 @@
           + '<div class="account-field"><label>Alert when delay is at least</label><select id="newAlertThreshold-' + type + '">' + thresholdOptions + '</select></div>'
           + '<button class="btn-primary" onclick="addAlertPref(\'' + type + '\')">Add</button>';
       } else {
-        // Only offer locations that don't already have this alert type —
-        // the backend enforces one-per-(location, type) too (409 on a
-        // duplicate), this is just so the dropdown never offers a choice
-        // that would fail.
         const usedLocationIds = new Set(prefsForType.map((p) => p.locationId));
         const availableLocations = locations.filter((loc) => !usedLocationIds.has(loc.id));
         if (!availableLocations.length) {
@@ -3010,12 +2549,6 @@
       }
     }
 
-    // Edit is only offered for morning_digest (sendHour) and traffic_route
-    // (delayThresholdMinutes) rows — see renderAlertTypeCard, which only
-    // renders alertEditForm-<id> for those two types. The form is rendered
-    // pre-filled with the current value up front and just hidden, same
-    // reveal-on-click pattern as showReviewReplyForm above, rather than
-    // built fresh from scratch on click.
     function showEditAlertPref(id) {
       const form = document.getElementById('alertEditForm-' + id);
       if (form) form.hidden = false;
@@ -3061,9 +2594,6 @@
       document.getElementById('newPassword').value = '';
     }
 
-    // Shown instead of the normal account panel after someone clicks a
-    // "reset your password" email link (see the PASSWORD_RECOVERY handling
-    // in initAccount) — takes over until a new password is actually saved.
     function renderPasswordRecoveryCard() {
       return '<div class="card"><h2>🔒 Set a new password</h2>'
         + '<p class="account-note">Choose a new password for your account.</p>'
@@ -3091,15 +2621,6 @@
       renderAccountPanel();
     }
 
-    // ── Delete account. The one genuinely irreversible action in this
-    // panel, so it gets its own visually distinct "danger zone" card at the
-    // very bottom, a text-confirmation step rather than a single click, and
-    // a native confirm() on top of that as a last-chance guard rail before
-    // the request is actually sent. See DELETE /api/account/me for what
-    // this removes: consumer profile, business listing (if any), saved
-    // locations, every alert preference, any active Stripe subscription —
-    // the lot, including the sign-in itself, cancelled and gone, not just
-    // "hidden".
     function renderDangerZoneCard() {
       return '<div class="card" style="border-color:#f2c6c2;">'
         + '<h2 style="color:#a3271b;">⚠️ Delete account</h2>'
@@ -3134,25 +2655,12 @@
       }
     }
 
-    // ── Two-factor authentication (TOTP via an authenticator app). Entirely
-    // Supabase's own MFA support (enroll/challenge/verify/unenroll) — no
-    // custom backend route needed for any of it, same as password sign-in.
-    // requireAuth.js is what actually enforces the "must be aal2" rule on
-    // every API call; everything here is just the UI for setting it up.
-    let mfaEnrollment = null; // { factorId, qrCode, secret } while a fresh enrollment awaits its confirm code
+    let mfaEnrollment = null;
 
     function renderMfaCard(factors) {
       const verified = (factors || []).filter((f) => f.status === 'verified');
 
       if (mfaEnrollment) {
-        // Supabase's totp.qr_code comes back as a data: URI wrapping RAW,
-        // unescaped SVG markup (see mfa.enroll()'s own docs) — it's built
-        // for React's src={...} (a real attribute value, no HTML parsing
-        // involved), not for dropping into an HTML string like everything
-        // else here. The `"` characters inside that SVG's own attributes
-        // (viewBox="...", etc.) close the img tag's src="..." early if
-        // left unescaped, which is what showed up as raw broken markup on
-        // the page instead of an image.
         const qrCodeSrc = mfaEnrollment.qrCode.replace(/"/g, '&quot;');
         return '<div class="card"><h2>🔐 Two-factor authentication</h2>'
           + '<p class="account-note">Scan this with an authenticator app (Google Authenticator, Authy, 1Password, etc.), then enter the 6-digit code it shows.</p>'
@@ -3194,10 +2702,6 @@
     }
 
     async function cancelMfaEnrollment() {
-      // Un-enroll the half-finished factor rather than just clearing local
-      // state — Supabase caps how many factors a user can have, so an
-      // abandoned unverified one left behind would eventually get in the
-      // way of a real attempt.
       if (mfaEnrollment) {
         await sb.auth.mfa.unenroll({ factorId: mfaEnrollment.factorId }).catch(() => {});
       }
@@ -3237,11 +2741,6 @@
       renderAccountPanel();
     }
 
-    // Shown instead of the normal account panel when a signed-in session
-    // hasn't yet cleared its second factor (see the aal check in
-    // renderAccountPanel) — sign-in itself succeeded, but nothing account-
-    // related loads until this passes, matching what requireAuth.js
-    // enforces server-side.
     function renderMfaChallengeCard() {
       return '<div class="card"><h2>🔐 Two-factor verification</h2>'
         + '<p class="account-note">Enter the 6-digit code from your authenticator app.</p>'
@@ -3271,9 +2770,6 @@
       }
     }
 
-    // ── Business directory: manage YOUR OWN listing (see routes/business.js).
-    // Same signed-in session as the rest of this panel — a person can be a
-    // consumer, a business, or both, with one login.
     function renderBusinessCards(business, reviews, vacancies) {
       const badgeClass = business ? (business.subscription_status || 'free') : 'free';
       const badgeLabel = business && business.subscription_status === 'active' ? 'Featured'
@@ -3292,10 +2788,6 @@
 
       const esc = (v) => (v || '').replace(/"/g, '&quot;');
 
-      // Logo upload only makes sense once a listing row exists (it just
-      // updates that row's logo_url) — same "create it, then enhance it"
-      // order as upgrading to Featured, so this block only renders when
-      // `business` is already set.
       const logoBlock = !business ? '' : (
         '<div class="account-field"><label>Logo (optional)</label>'
         + '<p class="account-note">Square image works best, e.g. 512×512px, cropped tight to the logo with little empty space around it. PNG, JPEG or WebP, up to 2MB.</p>'
@@ -3337,13 +2829,6 @@
         + (business ? renderOwnerReviewsCard(reviews || []) : '');
     }
 
-    // A business can have several open vacancies at once (unlike the single
-    // voucher above), so — same shape as the reviews-reply UI below — this
-    // is a list plus one reusable add/edit form, rather than fields baked
-    // into the main listing form. `editingVacancyId` is null while adding a
-    // new vacancy, or the id of the one being edited; vacanciesById caches
-    // the raw rows from the last render so editVacancy can prefill the form
-    // without re-parsing rendered HTML.
     let vacanciesById = {};
     let editingVacancyId = null;
 
@@ -3371,10 +2856,6 @@
 
       const listBlock = vacancies.length ? rows : '<p class="account-note">No vacancies listed yet.</p>';
 
-      // The form is always in the DOM (hidden by default) rather than only
-      // rendered on demand — same "toggle hidden" approach as the review
-      // reply form — so showAddVacancyForm/editVacancy just fill fields and
-      // un-hide it instead of managing raw HTML strings.
       const formBlock = '<div class="review-form" id="vacancyFormBlock" hidden>'
         + '<div class="account-field"><label>Job title</label><input type="text" id="vacTitle" placeholder="e.g. Kitchen Porter" /></div>'
         + '<div class="account-field"><label>Description (optional)</label><input type="text" id="vacDescription" placeholder="Hours, pay, what the role involves" /></div>'
@@ -3463,13 +2944,7 @@
       }
     }
 
-    // Reviews on the signed-in business's own listing — read-only for the
-    // review/rating itself (only the reviewer can change that, via
-    // routes/reviews.js), but the reply is the owner's to write, edit or
-    // remove (routes/business.js). Reviewer identity is never shown here
-    // either, same as the public directory view — sign-in-to-review is meant
-    // to curb spam, not to make people's identities visible to businesses.
-    let ownerReviewsById = {}; // reviewId -> raw review row, refreshed on every render — lets editReviewReply prefill from data instead of re-parsing rendered HTML
+    let ownerReviewsById = {};
     function renderOwnerReviewsCard(reviews) {
       ownerReviewsById = {};
       reviews.forEach((r) => { ownerReviewsById[r.id] = r; });
@@ -3519,11 +2994,6 @@
       }
     }
 
-    // "Edit" just re-opens a reply form pre-filled with the current text
-    // (from ownerReviewsById, filled on the last render — not re-parsed out
-    // of the rendered HTML) and reuses saveReviewReply to overwrite it —
-    // routes/business.js's PUT endpoint replaces the reply rather than
-    // versioning it, so editing and first-writing are the same call.
     function editReviewReply(reviewId) {
       const review = ownerReviewsById[reviewId];
       const current = (review && review.reply) || '';
