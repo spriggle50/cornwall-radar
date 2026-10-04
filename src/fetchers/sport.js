@@ -49,28 +49,53 @@ async function getSport({ limit = 15 } = {}) {
     fetchFalmouthPacketSport(limit),
   ]);
 
-  const items = [];
+  // Each successful source keeps its OWN array (sorted newest-first
+  // internally) instead of being merged into one list and sorted by date —
+  // same fix as news.js: a single global sort lets whichever source
+  // publishes most often (Cornwall Live Sport, most likely) crowd out the
+  // other almost entirely, even while both are being fetched successfully.
+  const bySource = [];
   const workingSources = [];
   const failedSources = [];
   settled.forEach((result, i) => {
-    if (result.status === 'fulfilled') {
-      items.push(...result.value);
+    if (result.status === 'fulfilled' && result.value.length) {
+      const sorted = [...result.value].sort(
+        (a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0)
+      );
+      bySource.push(sorted);
       workingSources.push(names[i]);
-    } else {
+    } else if (result.status === 'rejected') {
       failedSources.push(names[i]);
       console.error(`[sport] ${names[i]} failed:`, result.reason && result.reason.message);
     }
   });
 
-  if (!items.length) {
+  if (!bySource.length) {
     throw new Error('All Cornwall sport sources failed: ' + failedSources.join(', '));
   }
 
-  items.sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+  // Round-robin across sources — one story from each in turn, most recent
+  // first within each — instead of one global sort-by-date, so both
+  // sources get a fair, even share of the final list.
+  const items = [];
+  const pointers = new Array(bySource.length).fill(0);
+  outer:
+  while (items.length < limit) {
+    let addedAny = false;
+    for (let i = 0; i < bySource.length; i++) {
+      if (pointers[i] < bySource[i].length) {
+        items.push(bySource[i][pointers[i]]);
+        pointers[i]++;
+        addedAny = true;
+        if (items.length >= limit) break outer;
+      }
+    }
+    if (!addedAny) break;
+  }
 
   return {
     source: workingSources.join(', '),
-    items: items.slice(0, limit),
+    items,
     fetchedAt: new Date().toISOString(),
   };
 }

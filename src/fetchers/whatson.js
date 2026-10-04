@@ -66,31 +66,54 @@ async function getWhatsOn({ limit = 8 } = {}) {
     fetchFalmouthPacketWhatsOn(limit),
   ]);
 
-  const items = [];
+  // Same fix as news.js/sport.js: keep each source's own items (sorted
+  // newest-first by _pubDate) instead of merging everything into one list
+  // and sorting by date — a single global sort lets whichever source
+  // publishes most often crowd out the other almost entirely.
+  const bySource = [];
   const workingSources = [];
   const failedSources = [];
   settled.forEach((result, i) => {
-    if (result.status === 'fulfilled') {
-      items.push(...result.value);
+    if (result.status === 'fulfilled' && result.value.length) {
+      const sorted = [...result.value].sort(
+        (a, b) => new Date(b._pubDate || 0) - new Date(a._pubDate || 0)
+      );
+      bySource.push(sorted);
       workingSources.push(names[i]);
-    } else {
+    } else if (result.status === 'rejected') {
       failedSources.push(names[i]);
       console.error(`[whatson] ${names[i]} failed:`, result.reason && result.reason.message);
     }
   });
 
-  if (!items.length) {
+  if (!bySource.length) {
     throw new Error("All Cornwall what's-on sources failed: " + failedSources.join(', '));
   }
 
-  items.sort((a, b) => new Date(b._pubDate || 0) - new Date(a._pubDate || 0));
+  // Round-robin across sources — one item from each in turn, most recent
+  // first within each — instead of one global sort-by-date.
+  const items = [];
+  const pointers = new Array(bySource.length).fill(0);
+  outer:
+  while (items.length < limit) {
+    let addedAny = false;
+    for (let i = 0; i < bySource.length; i++) {
+      if (pointers[i] < bySource[i].length) {
+        items.push(bySource[i][pointers[i]]);
+        pointers[i]++;
+        addedAny = true;
+        if (items.length >= limit) break outer;
+      }
+    }
+    if (!addedAny) break;
+  }
 
   // _pubDate was only ever needed to sort Cornwall Live's and Falmouth
   // Packet's items against each other on equal footing — it's not part of
   // the shape this card's frontend already expects (just `date`, the
   // formatted display string), so it's dropped here rather than leaking a
   // new, undocumented field into the response.
-  const cleaned = items.slice(0, limit).map(({ _pubDate, ...rest }) => rest);
+  const cleaned = items.map(({ _pubDate, ...rest }) => rest);
 
   return {
     source: workingSources.join(', '),
