@@ -16,14 +16,20 @@ const { fetchWithTimeout } = require('../lib/fetchWithTimeout');
 
 const CORNWALL_TIDE_STATIONS = [
   { slug: 'falmouth', name: 'Falmouth', lat: 50.152, lon: -5.065 },
-  { slug: 'newlyn', name: 'Newlyn', lat: 50.101, lon: -5.543 },
+  // tidetimes.org.uk doesn't run Newlyn as its own port — it's one combined
+  // station covering both Penzance and Newlyn, published under the single
+  // slug "penzance-newlyn" (confirmed live on their site). The old 'newlyn'
+  // slug here returned a plain "no port data" response instead of a feed,
+  // which is what broke the tide card on production. Both Cornwall Radar
+  // entries below point at that same real station now.
+  { slug: 'penzance-newlyn', name: 'Newlyn', lat: 50.101, lon: -5.543 },
   { slug: 'st-ives-cornwall', name: 'St Ives', lat: 50.213, lon: -5.480 },
   { slug: 'padstow', name: 'Padstow', lat: 50.537, lon: -4.937 },
   { slug: 'fowey', name: 'Fowey', lat: 50.334, lon: -4.634 },
   { slug: 'looe', name: 'Looe', lat: 50.353, lon: -4.454 },
   { slug: 'newquay', name: 'Newquay', lat: 50.412, lon: -5.086 },
   { slug: 'mevagissey', name: 'Mevagissey', lat: 50.269, lon: -4.782 },
-  { slug: 'penzance', name: 'Penzance', lat: 50.118, lon: -5.537 },
+  { slug: 'penzance-newlyn', name: 'Penzance', lat: 50.118, lon: -5.537 },
 ];
 
 function nearestTideStation(lat, lon) {
