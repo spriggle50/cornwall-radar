@@ -9,29 +9,28 @@
 // down, the others still come through rather than the news card going
 // blank; only if EVERY source fails does this throw, same as before.
 //
-// SOURCES below is Cornwall Live, BBC and Rewind Radio — Falmouth Packet is
-// deliberately NOT listed here: its one RSS feed covers news, sport AND
-// what's-on together, so it's fetched and split by category ONCE in
-// fetchers/falmouthPacket.js, and this file only takes that split's `news`
-// bucket — see sport.js/whatson.js for the other two buckets of that same
-// shared, cached fetch. Cornwall Live's and Rewind Radio's feed URLs have
-// been confirmed live and working; BBC's regional feed uses their
-// long-standing, well-documented URL pattern and Falmouth Packet's was
-// supplied directly rather than guessed, but like every other fetcher in
-// this project (see README's "Important" section), this sandbox has no
-// outbound access to prove any of them live itself — run locally and check
-// what actually comes back before relying on it.
+// SOURCES below is Cornwall Live, BBC and Rewind Radio; Falmouth Packet's
+// own dedicated /news/rss/ feed is fetched separately below via the shared
+// fetchFalmouthPacketFeed() helper (see fetchers/falmouthPacket.js) rather
+// than being listed here directly, since it needs its raw XML sanitised
+// before parsing (that file's own comment explains why) — plain
+// parser.parseURL() on it isn't safe the way it is for the three sources
+// below. This used to fetch ONE combined Falmouth Packet feed and guess
+// each story's section from keywords; that combined feed stopped serving
+// RSS at all (silently falling through to their normal website's HTML
+// instead), so this now points straight at their real, correctly
+// categorised news feed instead. Cornwall Live's and Rewind Radio's feed
+// URLs have been confirmed live and working; BBC's regional feed uses
+// their long-standing, well-documented URL pattern, but like every other
+// fetcher in this project (see README's "Important" section), this
+// sandbox has no outbound access to prove any of them live itself — run
+// locally and check what actually comes back before relying on it.
 const Parser = require('rss-parser');
-const { getFalmouthPacketByCategory } = require('./falmouthPacket');
+const { fetchFalmouthPacketFeed } = require('./falmouthPacket');
 
 const parser = new Parser({
   timeout: 8000,
   headers: { 'User-Agent': 'CornwallRadar/1.0 (local conditions dashboard)' },
-  // Several Cornwall-area feeds (confirmed for Cornwall Live and Rewind
-  // Radio; BBC's regional feeds commonly carry one too) include a
-  // thumbnail via the standard Media RSS namespace — rss-parser only
-  // exposes it if told to look, same fix already applied to whatson.js
-  // and sport.js.
   customFields: {
     item: [
       ['media:content', 'mediaContent', { keepArray: true }],
@@ -43,11 +42,10 @@ const parser = new Parser({
 const SOURCES = [
   { name: 'Cornwall Live', url: 'https://www.cornwalllive.com/?service=rss' },
   { name: 'BBC News — Cornwall', url: 'https://feeds.bbci.co.uk/news/england/cornwall/rss.xml' },
-  // Confirmed live: a genuine RSS 2.0 feed (built on the aiir radio-station
-  // CMS, nothing to do with this project) carrying Rewind Radio's own
-  // Cornwall news stories, each with a media:content/media:thumbnail image.
   { name: 'Rewind Radio', url: 'https://www.rewindradio.co.uk/news/news/feed.xml' },
 ];
+
+const FALMOUTH_PACKET_NEWS_URL = 'https://www.falmouthpacket.co.uk/news/rss/';
 
 function extractImage(item) {
   return item.mediaContent?.[0]?.$?.url || item.mediaThumbnail?.[0]?.$?.url || null;
@@ -72,16 +70,11 @@ async function fetchSource(source, limit) {
   }));
 }
 
-async function fetchFalmouthPacketNews(limit) {
-  const buckets = await getFalmouthPacketByCategory();
-  return buckets.news.slice(0, limit);
-}
-
 async function getNews({ limit = 15 } = {}) {
   const names = [...SOURCES.map((s) => s.name), 'Falmouth Packet'];
   const settled = await Promise.allSettled([
     ...SOURCES.map((s) => fetchSource(s, limit)),
-    fetchFalmouthPacketNews(limit),
+    fetchFalmouthPacketFeed(FALMOUTH_PACKET_NEWS_URL, limit),
   ]);
 
   // Each successful source keeps its OWN array (sorted newest-first

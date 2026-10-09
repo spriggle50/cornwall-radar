@@ -1,16 +1,29 @@
 // "What's On" fetcher — merges Cornwall Live's dedicated entertainment/
-// things-to-do RSS feed with the what's-on stories pulled out of Falmouth
-// Packet's combined feed (see fetchers/falmouthPacket.js, which fetches
-// that feed ONCE and shares it with news.js/sport.js too, rather than three
-// fetchers all hitting the same Falmouth Packet URL independently). Same
-// fail-soft "one source down doesn't take the card down" approach as
-// news.js/sport.js. Distinct from news.js's general hard-news sources —
-// this card is curated for things to do (openings, festivals, days out),
-// which is what belongs alongside ticketed events on an "Events & What's
-// On" page.
+// things-to-do RSS feed with Falmouth Packet's own dedicated events-guide
+// feed. Same fail-soft "one source down doesn't take the card down"
+// approach as news.js/sport.js. Distinct from news.js's general hard-news
+// sources — this card is curated for things to do (openings, festivals,
+// days out), which is what belongs alongside ticketed events on an
+// "Events & What's On" page.
+//
+// Falmouth Packet's feed is fetched via the shared fetchFalmouthPacketFeed()
+// helper (see fetchers/falmouthPacket.js) rather than this file's own
+// parser.parseURL(), since its raw XML needs sanitising before parsing —
+// that file's own comment explains why. This used to go through ONE
+// combined Falmouth Packet feed and guess which stories were what's-on
+// from keywords; that combined feed stopped serving RSS at all (silently
+// falling through to their normal website's HTML instead), so this now
+// points straight at /leisure/eventsguide/rss/ — their real, dedicated
+// events-listing feed — instead. Falmouth Packet also publishes separate
+// /leisure/theatre/, /leisure/food_and_eating_out/, /leisure/bestofcornwall/
+// and /leisure/days_out/ feeds; those are left out deliberately since
+// they're editorial/review/evergreen-attraction content rather than a
+// time-bound events listing, which is what this card actually means by
+// "what's on" — add one as a second Falmouth Packet source here if that
+// call ever changes.
 
 const Parser = require('rss-parser');
-const { getFalmouthPacketByCategory } = require('./falmouthPacket');
+const { fetchFalmouthPacketFeed } = require('./falmouthPacket');
 
 const parser = new Parser({
   timeout: 8000,
@@ -24,6 +37,7 @@ const parser = new Parser({
 });
 
 const FEED_URL = 'https://www.cornwalllive.com/whats-on/?service=rss';
+const FALMOUTH_PACKET_EVENTS_URL = 'https://www.falmouthpacket.co.uk/leisure/eventsguide/rss/';
 
 function extractImage(item) {
   return item.mediaContent?.[0]?.$?.url || item.mediaThumbnail?.[0]?.$?.url || null;
@@ -48,8 +62,8 @@ async function fetchCornwallLiveWhatsOn(limit) {
 }
 
 async function fetchFalmouthPacketWhatsOn(limit) {
-  const buckets = await getFalmouthPacketByCategory();
-  return buckets.whatson.slice(0, limit).map((item) => ({
+  const items = await fetchFalmouthPacketFeed(FALMOUTH_PACKET_EVENTS_URL, limit);
+  return items.map((item) => ({
     title: item.title,
     link: item.link,
     _pubDate: item.publishedAt,

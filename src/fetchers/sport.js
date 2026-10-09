@@ -1,13 +1,19 @@
 // Cornwall Sport fetcher — merges Cornwall Live's dedicated sport RSS feed
-// with the sport stories pulled out of Falmouth Packet's combined feed (see
-// fetchers/falmouthPacket.js, which fetches that feed ONCE and shares it
-// with news.js/whatson.js too, rather than three fetchers all hitting the
-// same Falmouth Packet URL independently). Same fail-soft "one source down
-// doesn't take the card down" approach as news.js — if either source is
-// slow or down, the other still shows.
+// with Falmouth Packet's own dedicated sport feed. Same fail-soft "one
+// source down doesn't take the card down" approach as news.js — if either
+// source is slow or down, the other still shows.
+//
+// Falmouth Packet's feed is fetched via the shared fetchFalmouthPacketFeed()
+// helper (see fetchers/falmouthPacket.js) rather than this file's own
+// parser.parseURL(), since its raw XML needs sanitising before parsing —
+// that file's own comment explains why. This used to go through ONE
+// combined Falmouth Packet feed and guess which stories were sport from
+// keywords; that combined feed stopped serving RSS at all (silently
+// falling through to their normal website's HTML instead), so this now
+// points straight at their real, correctly categorised sport feed instead.
 
 const Parser = require('rss-parser');
-const { getFalmouthPacketByCategory } = require('./falmouthPacket');
+const { fetchFalmouthPacketFeed } = require('./falmouthPacket');
 
 const parser = new Parser({
   timeout: 8000,
@@ -21,6 +27,7 @@ const parser = new Parser({
 });
 
 const FEED_URL = 'https://www.cornwalllive.com/sport/?service=rss';
+const FALMOUTH_PACKET_SPORT_URL = 'https://www.falmouthpacket.co.uk/sport/rss/';
 
 function extractImage(item) {
   return item.mediaContent?.[0]?.$?.url || item.mediaThumbnail?.[0]?.$?.url || null;
@@ -37,16 +44,11 @@ async function fetchCornwallLiveSport(limit) {
   }));
 }
 
-async function fetchFalmouthPacketSport(limit) {
-  const buckets = await getFalmouthPacketByCategory();
-  return buckets.sport.slice(0, limit);
-}
-
 async function getSport({ limit = 15 } = {}) {
   const names = ['Cornwall Live Sport', 'Falmouth Packet'];
   const settled = await Promise.allSettled([
     fetchCornwallLiveSport(limit),
-    fetchFalmouthPacketSport(limit),
+    fetchFalmouthPacketFeed(FALMOUTH_PACKET_SPORT_URL, limit),
   ]);
 
   // Each successful source keeps its OWN array (sorted newest-first
