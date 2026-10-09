@@ -87,6 +87,20 @@ async function getTideTimes({ lat, lon } = {}) {
   }
 
   if (tides.length === 0) {
+    // Diagnostic-only addition: this error fires whenever either (a) the
+    // feed genuinely has no parseable tide lines, or (b) tidetimes.org.uk
+    // sent back something that isn't the expected RSS at all — e.g. a
+    // rate-limit/bot-protection page, which sites commonly return with a
+    // normal 200 OK rather than a 4xx, so `res.ok` above wouldn't catch it.
+    // Logging the content-type and a short snippet of the actual body here
+    // means the NEXT time this happens in production, the log line itself
+    // shows which of those two cases it is, instead of just "not found" —
+    // no need to guess or reproduce it by hand.
+    const contentType = res.headers.get('content-type') || '(none)';
+    console.error(
+      `[tides] parsed zero events for station=${station.slug} status=${res.status} ` +
+      `content-type=${contentType} body-snippet=${JSON.stringify(xml.slice(0, 300))}`
+    );
     throw new Error('No tide events found in the tidetimes.org.uk feed');
   }
 
