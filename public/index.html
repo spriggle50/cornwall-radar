@@ -750,12 +750,15 @@
         if (!n || !n.items || !n.items.length) return 'No stories right now';
         return n.items[0].title;
       }
-      if (key === 'eventsWhatson') {
+      if (key === 'whatson') {
         const w = d.whatson;
         if (w && w.items && w.items.length) return w.items[0].title;
+        return "What's on around Cornwall";
+      }
+      if (key === 'events') {
         const e = d.events;
         if (e && e.configured && e.events && e.events.length) return e.events.length + ' upcoming event(s)';
-        return "What's on around Cornwall";
+        return 'Ticketed events near you';
       }
       if (key === 'weatherDetails') {
         const p = d.pollen;
@@ -817,7 +820,8 @@
       { key: 'buses', icon: '🚌', title: 'Live Buses', photo: '/images/buses-hero.jpg' },
       { key: 'tides', icon: '🌊', title: 'Tide Times', photo: '/images/tides.jpg' },
       { key: 'wildlife', icon: '🦡', title: 'Wildlife', photo: '/images/wildlife-hero.jpg' },
-      { key: 'eventsWhatson', icon: '🎉', title: "Events & What's On", photo: '/images/events.jpg' },
+      { key: 'whatson', icon: '🎉', title: "What's On", photo: '/images/whatson-hero.jpg' },
+      { key: 'events', icon: '🎟️', title: 'Events', photo: '/images/events.jpg' },
       { key: 'news', icon: '📰', title: 'Cornwall News', photo: '/images/community.jpg' },
       { key: 'sport', icon: '⚽', title: 'Cornwall Sport', dynamicPhoto: (d) => d.sport?.items?.[0]?.image || null },
       { key: 'councilNews', icon: '🏛️', title: 'Cornwall Council News', photo: '/images/council-news.jpg' },
@@ -865,7 +869,8 @@
         wildlife: renderWildlifeDetail,
         news: renderNewsDetail,
         weatherDetails: renderWeatherDetailsDetail,
-        eventsWhatson: renderEventsWhatsonDetail,
+        whatson: renderWhatsOnDetail,
+        events: renderEventsDetail,
         sport: renderSportDetail,
         councilNews: renderCouncilNewsDetail,
         trains: renderTrainsDetail,
@@ -874,7 +879,7 @@
         bathingWater: renderBathingWaterDetail,
       };
       const backBtn = '<button class="back-btn" onclick="closeDetail()">← Back</button>';
-      const multiFieldKeys = ['weatherDetails', 'eventsWhatson'];
+      const multiFieldKeys = ['weatherDetails'];
       const sectionData = multiFieldKeys.includes(key) ? dashboardData : (dashboardData ? dashboardData[key] : null);
       panel.innerHTML = backBtn + renderers[key](sectionData);
 
@@ -1234,40 +1239,44 @@
       return '<div class="card">' + banner + '<h2>' + title + '</h2>' + pollenBlock + extraBlock + forecastBlock + '</div>';
     }
 
-    function renderEventsWhatsonDetail(d) {
-      const title = "🎉 Events & What's On";
-      if (!d) return '<div class="card"><h2>' + title + '</h2><p class="unavailable">Unavailable right now</p></div>';
-
-      const w = d.whatson;
-      const ev = d.events;
-
-      let whatsonBlock = '';
-      if (w && w.unavailable) {
-        whatsonBlock = '<h3 class="wd-subhead">What\'s On in Cornwall</h3><p class="unavailable">Unavailable right now (' + w.error + ')</p>';
-      } else if (!w || !w.items || !w.items.length) {
-        whatsonBlock = '<h3 class="wd-subhead">What\'s On in Cornwall</h3><p class="unavailable">No items available right now</p>';
-      } else {
-        const cards = w.items.map(item => {
-          const img = item.image
-            ? '<img class="feed-card-img" src="' + item.image + '" alt="" loading="lazy" />'
-            : '<div class="feed-card-img-placeholder">🎉</div>';
-          const meta = [item.date, item.source ? 'via ' + item.source : null].filter(Boolean).join(' · ');
-          return '<a class="feed-card" href="' + item.link + '" target="_blank">'
-            + img
-            + '<div class="feed-card-body">'
-            + '<div class="feed-card-title">' + item.title + '</div>'
-            + (meta ? '<div class="feed-card-date">' + meta + '</div>' : '')
-            + '</div></a>';
-        }).join('');
-        whatsonBlock = '<h3 class="wd-subhead">What\'s On in Cornwall</h3><div class="feed-grid">' + cards + '</div>';
+    // Split from the old combined renderEventsWhatsonDetail() into two
+    // separate cards — the data was already two separate top-level fields
+    // (d.whatson, d.events) on the dashboard payload, this only ever
+    // merged them into one card at the rendering/hub-grid layer, so no
+    // backend change was needed to split them back apart.
+    function renderWhatsOnDetail(w) {
+      const title = "🎉 What's On in Cornwall";
+      if (!w || w.unavailable) {
+        const reason = w && w.error ? ' (' + w.error + ')' : '';
+        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">Unavailable right now' + reason + '</p></div>';
       }
+      if (!w.items || !w.items.length) {
+        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">No items available right now</p></div>';
+      }
+      const cards = w.items.map(item => {
+        const img = item.image
+          ? '<img class="feed-card-img" src="' + item.image + '" alt="" loading="lazy" />'
+          : '<div class="feed-card-img-placeholder">🎉</div>';
+        const meta = [item.date, item.source ? 'via ' + item.source : null].filter(Boolean).join(' · ');
+        return '<a class="feed-card" href="' + item.link + '" target="_blank">'
+          + img
+          + '<div class="feed-card-body">'
+          + '<div class="feed-card-title">' + item.title + '</div>'
+          + (meta ? '<div class="feed-card-date">' + meta + '</div>' : '')
+          + '</div></a>';
+      }).join('');
+      return '<div class="card"><h2>' + title + '</h2><div class="feed-grid">' + cards + '</div></div>';
+    }
 
-      let eventsBlock = '';
+    function renderEventsDetail(ev) {
+      const title = '🎟️ Events';
       if (ev && ev.configured === false) {
-        eventsBlock = '<h3 class="wd-subhead">Local Events</h3><p class="unavailable">' + ev.message + '</p>';
-      } else if (ev && ev.unavailable) {
-        eventsBlock = '<h3 class="wd-subhead">Local Events</h3><p class="unavailable">Unavailable right now (' + ev.error + ')</p>';
-      } else if (ev && ev.configured && ev.events && ev.events.length) {
+        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">' + ev.message + '</p></div>';
+      }
+      if (ev && ev.unavailable) {
+        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">Unavailable right now (' + ev.error + ')</p></div>';
+      }
+      if (ev && ev.configured && ev.events && ev.events.length) {
         const notes = (ev.sourceNotes && ev.sourceNotes.length)
           ? '<p class="section-subtitle" style="color:#b45309;">' + ev.sourceNotes.join(' · ') + '</p>'
           : '';
@@ -1295,12 +1304,12 @@
           }).join('');
           return '<div class="event-month-group"><div class="event-month-label">' + month + '</div><div class="events-grid">' + cards + '</div></div>';
         }).join('');
-        eventsBlock = '<h3 class="wd-subhead">Local Events</h3>' + notes + groupsHtml;
-      } else if (ev && ev.configured) {
-        eventsBlock = '<h3 class="wd-subhead">Local Events</h3><p class="unavailable">No events found nearby right now — try again later</p>';
+        return '<div class="card"><h2>' + title + '</h2>' + notes + groupsHtml + '</div>';
       }
-
-      return '<div class="card"><h2>' + title + '</h2>' + whatsonBlock + eventsBlock + '</div>';
+      if (ev && ev.configured) {
+        return '<div class="card"><h2>' + title + '</h2><p class="unavailable">No events found nearby right now — try again later</p></div>';
+      }
+      return '<div class="card"><h2>' + title + '</h2><p class="unavailable">Unavailable right now</p></div>';
     }
 
     function renderNewsDetail(n) {
