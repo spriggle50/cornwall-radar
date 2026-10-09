@@ -17,9 +17,9 @@
 // shared, short-lived cache the same Falmouth Packet feed URL would get hit
 // three separate times on every single dashboard rebuild for no benefit.
 const Parser = require('rss-parser');
+const { fetchWithTimeout } = require('../lib/fetchWithTimeout');
+
 const parser = new Parser({
-  timeout: 8000,
-  headers: { 'User-Agent': 'CornwallRadar/1.0 (local conditions dashboard)' },
   customFields: {
     item: [
       ['media:content', 'mediaContent', { keepArray: true }],
@@ -36,6 +36,18 @@ const FEED_URL = 'https://www.falmouthpacket.co.uk/rss/';
 // sure it's never fetched MORE often than needed within one dashboard
 // rebuild either.
 const TTL_MS = 10 * 60 * 1000;
+
+// Matches a bare "&" that ISN'T already the start of a valid XML entity
+// (&amp; &lt; &gt; &quot; &apos; or a numeric &#123; / &#x7B;). Falmouth
+// Packet's own feed occasionally contains a raw, un-escaped "&" — e.g.
+// "Fish & Chips" instead of "Fish &amp; Chips" — and rss-parser's
+// underlying XML parser rejects the ENTIRE feed over that one character
+// ("Invalid character in entity name") rather than tolerating it, which is
+// what was silently dropping Falmouth Packet from news/sport/whatson every
+// time their feed happened to contain one. Fetching the raw text ourselves
+// and escaping any stray "&" before parsing fixes this at the source
+// instead of hoping Newsquest's feed is always well-formed.
+const UNESCAPED_AMPERSAND = /&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)/g;
 
 // Matched against a story's title only when it has no <category> tag, or
 // none of its tags map cleanly onto one of this dashboard's three cards.
@@ -64,7 +76,23 @@ function categoriseItem(item) {
 }
 
 async function fetchAndCategorise() {
-  const parsed = await parser.parseURL(FEED_URL);
+  // Same call shape as tides.js/news.js/etc. use this shared helper with —
+  // no explicit timeout override here, so it uses fetchWithTimeout's own
+  // default rather than guessing at an option this file never passed
+  // before (the old 8s figure was rss-parser's own internal fetch option,
+  // which no longer applies now that it isn't doing the fetching).
+  const res = await fetchWithTimeout(FEED_URL, {
+    headers: { 'User-Agent': 'CornwallRadar/1.0 (local conditions dashboard)' },
+  });
+  if (!res.ok) {
+    throw new Error(`Falmouth Packet request failed: ${res.status} ${res.statusText}`);
+  }
+  const rawXml = await res.text();
+  // Sanitise before parsing, not after — by the time rss-parser throws, the
+  // feed hasn't been parsed at all, so there's no partial result to patch up.
+  const sanitisedXml = rawXml.replace(UNESCAPED_AMPERSAND, '&amp;');
+  const parsed = await parser.parseString(sanitisedXml);
+
   const buckets = { news: [], sport: [], whatson: [] };
   for (const item of (parsed.items || [])) {
     buckets[categoriseItem(item)].push({
