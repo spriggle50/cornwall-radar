@@ -2032,7 +2032,7 @@
 
     function renderJobsCard(data) {
       const searchBar = '<div class="directory-search-bar" style="display:flex; gap:8px;">'
-        + '<input type="text" id="jobsSearchInput" placeholder="Search job titles… (press Enter)" style="flex:1;" value="'
+        + '<input type="text" id="jobsSearchInput" placeholder="Search job title, description or company… (press Enter)" style="flex:1;" value="'
         + (jobsFilters.q || '').replace(/"/g, '&quot;')
         + '" oninput="onJobsSearchInput(this.value)" onkeydown="onJobsSearchKeydown(event)" />'
         + '<button class="btn-primary" onclick="onJobsSearchSubmit()">Search</button>'

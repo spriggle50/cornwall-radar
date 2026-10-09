@@ -257,8 +257,11 @@ function mapExternalJob(job) {
 // first. Business details (name, category, logo, location) are fetched in
 // a second query and merged here in JS — same "no embedded joins" style as
 // aggregateRatings above — rather than every business's vacancies. `q` is a
-// plain keyword search across the vacancy's own title/description (and is
-// passed straight through to Adzuna's own `what` search too), word-by-word
+// plain keyword search across the vacancy's own title/description AND the
+// posting business's name (added so e.g. searching the business's name
+// finds its roles even when the vacancy's own title/description never
+// mentions it — previously only title/description were matched), and is
+// passed straight through to Adzuna's own `what` search too, word-by-word
 // same as the main listing search; deliberately no category filter (see
 // README) — a business's own directory category doesn't map onto how
 // someone searches for a job.
@@ -292,7 +295,27 @@ router.get('/vacancies', async (req, res) => {
         const cleaned = word.replace(/[,()%*]/g, '');
         if (!cleaned) continue;
         const term = `%${cleaned}%`;
-        query = query.or(`title.ilike.${term},description.ilike.${term}`);
+
+        // Widen the match beyond the vacancy's own title/description to
+        // also cover the posting business's name — e.g. searching
+        // "Infinitech" should find Infinitech's own vacancies even if
+        // their job titles never happen to mention the business name.
+        // Looked up per search word (same AND-across-words, OR-across-
+        // fields shape as this whole loop, and the main directory search
+        // above) rather than joining the two tables in one query — keeps
+        // this in plain, debuggable JS rather than relying on
+        // supabase-js's embedded-resource filter syntax across a join.
+        const { data: nameMatches } = await supabaseAdmin
+          .from('businesses')
+          .select('id')
+          .ilike('name', term);
+        const matchingBusinessIds = (nameMatches || []).map((b) => b.id);
+
+        const orParts = [`title.ilike.${term}`, `description.ilike.${term}`];
+        if (matchingBusinessIds.length) {
+          orParts.push(`business_id.in.(${matchingBusinessIds.join(',')})`);
+        }
+        query = query.or(orParts.join(','));
       }
     }
 

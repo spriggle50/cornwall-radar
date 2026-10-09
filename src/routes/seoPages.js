@@ -13,6 +13,10 @@
 //    category. Targets the broad "Cornwall business directory" search.
 //  - GET /directory?category=X         — one category across all of
 //    Cornwall. Targets "<trade> in Cornwall"-style searches.
+//  - GET /directory?q=X                — free-text search by business name
+//    (and description), optionally combined with ?category=X. Submitted by
+//    the plain <form> in searchFormHtml() below — no JS required, since
+//    this whole page is meant to render and work with zero JavaScript.
 //  - GET /directory/business/:id/:slug — one business's own page. Targets
 //    someone searching that business's name, or a longer-tail "<trade> in
 //    <town>" search that the category page alone can't capture as
@@ -64,6 +68,11 @@ function categoryPath(category) {
 // nothing loaded from index.html's own giant embedded one) since these
 // pages are meant to render fully and instantly with zero JavaScript,
 // unlike the main app.
+//
+// The header carries a dedicated "Back to live dashboard" pill, separate
+// from the brand logo link, so there's an obvious, always-visible way back
+// to the main app without scrolling — the footer link further down the
+// page stays too, but it's no longer the only way back.
 function pageShell({ title, description, canonicalPath, jsonLd, bodyHtml, ogImage }) {
   const canonicalUrl = `${SITE_URL}${canonicalPath}`;
   // A business's own page shares ITS logo (see the business-page route
@@ -92,15 +101,22 @@ ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script
   * { box-sizing: border-box; }
   body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); line-height:1.5; }
   a { color:var(--accent-dark); }
-  header.site-header { background:var(--text); color:#fff; padding:14px 20px; display:flex; align-items:center; gap:10px; }
-  header.site-header img { width:32px; height:32px; }
-  header.site-header a { color:#fff; text-decoration:none; font-weight:700; font-size:1.1rem; display:flex; align-items:center; gap:10px; }
+  header.site-header { background:var(--text); color:#fff; padding:14px 20px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  header.site-header .brand { color:#fff; text-decoration:none; font-weight:700; font-size:1.1rem; display:flex; align-items:center; gap:10px; }
+  header.site-header .brand img { width:32px; height:32px; }
+  header.site-header .home-link { color:#fff; text-decoration:none; font-weight:600; font-size:0.85rem; background:rgba(255,255,255,0.15); padding:7px 14px; border-radius:999px; white-space:nowrap; }
+  header.site-header .home-link:hover { background:rgba(255,255,255,0.25); }
   main { max-width:900px; margin:0 auto; padding:24px 20px 60px; }
   h1 { font-size:1.6rem; margin-bottom:6px; }
   h2 { font-size:1.15rem; margin:28px 0 10px; border-bottom:1px solid var(--border); padding-bottom:6px; }
   .lede { color:var(--text-2); max-width:680px; }
   .cta-box { background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px 18px; margin:18px 0 28px; }
   .cta-box a.btn { display:inline-block; background:var(--accent); color:#fff; text-decoration:none; font-weight:700; padding:9px 16px; border-radius:8px; margin-top:8px; }
+  .search-form { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 20px; }
+  .search-form input[type="text"] { flex:1; min-width:180px; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:0.92rem; }
+  .search-form select { padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:0.92rem; background:#fff; }
+  .search-form button { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:9px 18px; font-weight:700; cursor:pointer; font-size:0.92rem; }
+  .search-form button:hover { background:var(--accent-dark); }
   .cat-nav { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 24px; padding:0; list-style:none; }
   .cat-nav a { display:inline-block; font-size:0.82rem; background:#fff; border:1px solid var(--border); border-radius:999px; padding:5px 12px; text-decoration:none; color:var(--text-2); }
   .cat-nav a.active { background:var(--accent); color:#fff; border-color:var(--accent); }
@@ -122,7 +138,10 @@ ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script
 </style>
 </head>
 <body>
-<header class="site-header"><a href="/"><img src="/brand/icon-96.png" alt="" /> Cornwall Radar</a></header>
+<header class="site-header">
+  <a class="brand" href="/"><img src="/brand/icon-96.png" alt="" /> Cornwall Radar</a>
+  <a class="home-link" href="/">← Back to live dashboard</a>
+</header>
 <main>
 ${bodyHtml}
 </main>
@@ -155,6 +174,22 @@ function categoryNav(activeCategory) {
   return `<ul class="cat-nav">${items.join('')}</ul>`;
 }
 
+// Plain GET <form> — no JS needed, same as the rest of this page. Submits
+// back to /directory with ?q= (business name/description search) and
+// ?category= (the same filter the cat-nav links above use), so either can
+// be used alone or combined. This is the fix for "no search for category or
+// by name" — until now the only way to filter by category was clicking one
+// of the cat-nav pills, and there was no way to search by name at all.
+function searchFormHtml(category, q) {
+  const options = ['<option value="">All categories</option>']
+    .concat(BUSINESS_CATEGORIES.map((c) => `<option value="${escHtml(c)}"${c === category ? ' selected' : ''}>${escHtml(c)}</option>`));
+  return `<form method="GET" action="/directory" class="search-form">
+    <input type="text" name="q" placeholder="Search by business name…" value="${escHtml(q || '')}" />
+    <select name="category">${options.join('')}</select>
+    <button type="submit">Search</button>
+  </form>`;
+}
+
 function renderListingHtml(b) {
   const featuredTag = b.subscription_status === 'active' ? '<span class="featured-tag">★ Featured</span>' : '';
   // A plain grey square instead of an <img> at all when there's no logo —
@@ -177,8 +212,11 @@ function renderListingHtml(b) {
 // ?category=X narrows it to one category, same fixed list as everywhere
 // else in this project (lib/businessCategories.js) so an invalid/typo'd
 // value just falls back to showing everything rather than erroring.
+// ?q=X searches by business name/description, and can be combined with
+// ?category=X — both are submitted together by searchFormHtml()'s form.
 router.get('/directory', async (req, res) => {
   const category = BUSINESS_CATEGORIES.includes(req.query.category) ? req.query.category : null;
+  const q = String(req.query.q || '').trim().slice(0, 100);
 
   if (!supabaseConfigured()) {
     return res.send(pageShell({
@@ -194,6 +232,22 @@ router.get('/directory', async (req, res) => {
       .from('businesses')
       .select('id, name, category, description, postcode, logo_url, subscription_status');
     if (category) query = query.eq('category', category);
+
+    // Same word-by-word AND-across-words / OR-across-fields search pattern
+    // used by the in-app directory API (routes/directory.js) — split into
+    // up to 6 words, strip PostgREST-meaningful characters, chain .or()
+    // calls (each ANDs with the previous ones in supabase-js) across name
+    // and description so a multi-word search narrows rather than broadens.
+    if (q) {
+      const words = q.split(/\s+/).filter(Boolean).slice(0, 6);
+      for (const word of words) {
+        const cleaned = word.replace(/[,()%*]/g, '');
+        if (!cleaned) continue;
+        const term = `%${cleaned}%`;
+        query = query.or(`name.ilike.${term},description.ilike.${term}`);
+      }
+    }
+
     const { data, error } = await query;
     if (error) throw new Error(error.message);
 
@@ -205,23 +259,33 @@ router.get('/directory', async (req, res) => {
       return a.name.localeCompare(b.name);
     });
 
-    const title = category
-      ? `${category} in Cornwall — Free Business Directory | Cornwall Radar`
-      : 'Cornwall Business Directory — Free Local Business Listings | Cornwall Radar';
-    const description = category
-      ? `${category} businesses across Cornwall, listed free on Cornwall Radar's local business directory. Browse listings or add your own for free.`
-      : `Browse ${businesses.length || 'hundreds of'} local businesses across Cornwall for free — every category from trades to cafes, days out to professional services. List your own business free.`;
+    const searching = Boolean(q);
+    const title = searching
+      ? `"${q}" — Cornwall Business Directory Search | Cornwall Radar`
+      : category
+        ? `${category} in Cornwall — Free Business Directory | Cornwall Radar`
+        : 'Cornwall Business Directory — Free Local Business Listings | Cornwall Radar';
+    const description = searching
+      ? `Search results for "${q}" in Cornwall Radar's free Cornwall business directory.`
+      : category
+        ? `${category} businesses across Cornwall, listed free on Cornwall Radar's local business directory. Browse listings or add your own for free.`
+        : `Browse ${businesses.length || 'hundreds of'} local businesses across Cornwall for free — every category from trades to cafes, days out to professional services. List your own business free.`;
 
-    let body = `<h1>${category ? escHtml(category) + ' in Cornwall' : 'Cornwall Business Directory'}</h1>`;
-    body += `<p class="lede">${category
-      ? `Every ${escHtml(category)} business listed free on Cornwall Radar's Cornwall business directory, in one place.`
-      : `A free, growing directory of local businesses across Cornwall — from trades and cafes to days out and professional services. No charge to list, ever.`}</p>`;
+    let body = `<h1>${searching ? `Search results for "${escHtml(q)}"` : category ? escHtml(category) + ' in Cornwall' : 'Cornwall Business Directory'}</h1>`;
+    body += `<p class="lede">${searching
+      ? `${businesses.length} business${businesses.length === 1 ? '' : 'es'} matching "${escHtml(q)}"${category ? ' in ' + escHtml(category) : ''}.`
+      : category
+        ? `Every ${escHtml(category)} business listed free on Cornwall Radar's Cornwall business directory, in one place.`
+        : `A free, growing directory of local businesses across Cornwall — from trades and cafes to days out and professional services. No charge to list, ever.`}</p>`;
+    body += searchFormHtml(category, q);
     body += LIST_BUSINESS_CTA;
     body += categoryNav(category);
 
     if (!businesses.length) {
-      body += `<p class="lede">No businesses listed${category ? ' in this category' : ''} yet — be the first.</p>`;
-    } else if (category) {
+      body += `<p class="lede">No businesses found${searching ? ` for "${escHtml(q)}"` : category ? ' in this category' : ''}${searching ? '' : ' yet'} — ${searching ? 'try a different search, or browse by category above.' : 'be the first.'}</p>`;
+    } else if (searching || category) {
+      // A search (or a single category) is always a flat list — grouping
+      // by category only makes sense for the "everything" view below.
       body += businesses.map(renderListingHtml).join('');
     } else {
       // Grouped by category on the all-directory view, same grouping the
@@ -251,6 +315,10 @@ router.get('/directory', async (req, res) => {
       })),
     };
 
+    // Canonical deliberately ignores ?q= (always points at the plain
+    // category/all-directory URL) — an arbitrary search string shouldn't
+    // become its own indexable, canonical page; it'd bloat the index with
+    // near-duplicate pages instead of helping anyone find them.
     res.set('Cache-Control', 'public, max-age=300');
     res.send(pageShell({ title, description, canonicalPath: categoryPath(category), jsonLd, bodyHtml: body }));
   } catch (err) {
