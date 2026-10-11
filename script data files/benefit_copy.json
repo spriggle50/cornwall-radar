@@ -1,0 +1,52 @@
+{
+  "Food & Drink": {
+    "subject": "A free listing for {{business_name}} on Cornwall Radar",
+    "hook": "People deciding where to eat or drink right now, based on today's weather and tide.",
+    "body": "Cornwall Radar is a live conditions site for Cornwall — weather, tides, surf and traffic in one place. Visitors use it to decide what to do *right now*, including where to eat. A free listing for {{business_name}} puts you in front of that decision at the exact moment it's being made, with no cost and no catch."
+  },
+  "Things to Do": {
+    "subject": "Get {{business_name}} in front of people planning their day",
+    "hook": "Plans change with the conditions — flat surf, wrong tide, rain coming in — and people need an alternative fast.",
+    "body": "Cornwall Radar shows visitors live weather, tide and surf conditions across the county, and they use it to decide what to actually do that day. A free listing puts {{business_name}} under our Attractions & Activities category, so visitors and locals searching for days out can find you directly — and when plans shift at the last minute, you're right there as the next thing to try. Free, no commission, no catch."
+  },
+  "Stay": {
+    "subject": "Free visibility for {{business_name}} on Cornwall Radar",
+    "hook": "People planning a Cornwall trip check conditions for their dates before they book.",
+    "body": "Cornwall Radar is a live conditions dashboard for Cornwall that people check while planning trips — weather, tides, what's open. A free listing puts {{business_name}} in front of exactly that audience, at no cost."
+  },
+  "Shopping & Lifestyle": {
+    "subject": "A free listing for {{business_name}} on Cornwall Radar",
+    "hook": "Rainy-day browsers looking for something to do indoors are exactly the footfall independent shops want.",
+    "body": "Cornwall Radar shows live weather and conditions for Cornwall, and when the forecast turns, people look for an indoor alternative. A free listing for {{business_name}} puts you in front of that \"let's go shopping instead\" moment — free, no catch."
+  },
+  "Property, Homes & Gardens": {
+    "subject": "Free local listing for {{business_name}}",
+    "hook": "People searching for a trusted local tradesperson or property service in Cornwall.",
+    "body": "Cornwall Radar is building out a free local business directory alongside its live conditions dashboard. A listing for {{business_name}} means people searching for a builder, landscaper, surveyor or property service in Cornwall can find you — free, no commission, no catch."
+  },
+  "Rest, Relaxation & Beauty": {
+    "subject": "A free listing for {{business_name}} on Cornwall Radar",
+    "hook": "People treating themselves on a rainy day, or looking for a local spot to unwind.",
+    "body": "Cornwall Radar shows visitors and locals live weather and conditions for Cornwall — and on a grey day, a lot of people start looking for somewhere to relax instead. A free listing puts {{business_name}} in front of that search, at no cost."
+  },
+  "Weddings": {
+    "subject": "Free listing for {{business_name}} on Cornwall Radar",
+    "hook": "Couples planning a Cornish wedding do a lot of local research before they book anything.",
+    "body": "Cornwall Radar is building a free local directory to sit alongside its live conditions dashboard for Cornwall. A listing for {{business_name}} gets you in front of couples researching Cornwall wedding suppliers — free, no commission, no catch."
+  },
+  "Business & Professional Services": {
+    "subject": "Free local listing for {{business_name}}",
+    "hook": "\"Near me\" searches from people who need a local professional, not a national call centre.",
+    "body": "Cornwall Radar is building a free local business directory for Cornwall. A listing for {{business_name}} means people searching for a local accountant, solicitor, taxi or tradesperson find an independent Cornish business first — free, no commission, no catch."
+  },
+  "Dogs & Pet Services": {
+    "subject": "A free listing for {{business_name}} on Cornwall Radar",
+    "hook": "Dog owners checking tide times for a dog-friendly beach are exactly your audience.",
+    "body": "Cornwall Radar shows live weather and tide conditions across Cornwall, heavily used by people planning a dog walk or a beach trip. A free listing puts {{business_name}} in front of that same audience — free, no catch."
+  },
+  "Holiday Letting & Housekeeping": {
+    "subject": "Free local listing for {{business_name}}",
+    "hook": "Holiday let owners and property managers looking for reliable local services.",
+    "body": "Cornwall Radar is building a free local directory for Cornwall businesses. A listing for {{business_name}} puts you in front of holiday let owners and property managers looking for cleaning, laundry and changeover services they can trust — free, no commission, no catch."
+  }
+}

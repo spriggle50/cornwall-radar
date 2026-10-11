@@ -1,0 +1,19 @@
+{
+  "name": "cornwall-radar-outreach",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cornwall Radar free-listing outreach campaign — Supabase lead import + scheduled Resend sender.",
+  "scripts": {
+    "import": "node import_leads.mjs",
+    "send": "node send_batch.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "resend": "^4.0.0",
+    "csv-parse": "^5.5.6"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
