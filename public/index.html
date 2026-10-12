@@ -804,6 +804,7 @@
         return bw.sites.length + ' Cornwall beaches — live EA ratings';
       }
       if (key === 'directory') return 'Find local businesses, or list your own';
+      if (key === 'foodDrink') return 'Find places to eat and drink across Cornwall';
       if (key === 'activities') return 'Search things to do across Cornwall';
       if (key === 'vouchers') return 'Local discounts and offers — free to browse';
       if (key === 'jobs') return 'Roles posted directly by Cornwall businesses';
@@ -812,6 +813,7 @@
 
     const HUB_SECTIONS = [
       { key: 'directory', icon: '🏪', title: 'Business Directory' },
+      { key: 'foodDrink', icon: '🍽️', title: 'Food & Drink', photo: '/images/food-drink-hero.jpg' },
       { key: 'activities', icon: '🎡', title: 'Days Out & Activities', photo: '/images/activities-hero.jpg' },
       { key: 'vouchers', icon: '🎟️', title: 'Vouchers & Offers', photo: '/images/vouchers-hero.jpg' },
       { key: 'jobs', icon: '💼', title: 'Local Jobs', photo: '/images/jobs-hero.jpg' },
@@ -857,7 +859,8 @@
       const panel = document.getElementById('detailPanel');
       panel.hidden = false;
 
-      if (key === 'directory') { renderDirectoryDetail(); return; }
+      if (key === 'directory') { directoryFilters.category = ''; renderDirectoryDetail(); return; }
+      if (key === 'foodDrink') { directoryFilters.category = 'Food & Drink'; renderDirectoryDetail(); return; }
       if (key === 'activities') { renderActivitiesDetail(); return; }
       if (key === 'vouchers') { renderVouchersDetail(); return; }
       if (key === 'jobs') { renderJobsDetail(); return; }
