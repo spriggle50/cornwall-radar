@@ -202,7 +202,7 @@ function renderListingHtml(b) {
     ${logo}
     <div class="listing-body">
       <h3><a href="${businessPath(b)}">${escHtml(b.name)}</a>${featuredTag}</h3>
-      <div class="meta">${escHtml(b.category)}${b.postcode ? ' · ' + escHtml(b.postcode) : ''}</div>
+      <div class="meta">${escHtml(b.category)}${b.town ? ' · ' + escHtml(b.town) : (b.postcode ? ' · ' + escHtml(b.postcode) : '')}</div>
       ${b.description ? `<p>${escHtml(b.description)}</p>` : ''}
     </div>
   </div>`;
@@ -212,7 +212,7 @@ function renderListingHtml(b) {
 // ?category=X narrows it to one category, same fixed list as everywhere
 // else in this project (lib/businessCategories.js) so an invalid/typo'd
 // value just falls back to showing everything rather than erroring.
-// ?q=X searches by business name/description, and can be combined with
+// ?q=X searches by business name/description/postcode/town, and can be combined with
 // ?category=X — both are submitted together by searchFormHtml()'s form.
 router.get('/directory', async (req, res) => {
   const category = BUSINESS_CATEGORIES.includes(req.query.category) ? req.query.category : null;
@@ -230,21 +230,22 @@ router.get('/directory', async (req, res) => {
   try {
     let query = supabaseAdmin
       .from('businesses')
-      .select('id, name, category, description, postcode, logo_url, subscription_status');
+      .select('id, name, category, description, postcode, town, logo_url, subscription_status');
     if (category) query = query.eq('category', category);
 
     // Same word-by-word AND-across-words / OR-across-fields search pattern
     // used by the in-app directory API (routes/directory.js) — split into
     // up to 6 words, strip PostgREST-meaningful characters, chain .or()
-    // calls (each ANDs with the previous ones in supabase-js) across name
-    // and description so a multi-word search narrows rather than broadens.
+    // calls (each ANDs with the previous ones in supabase-js) across name,
+    // description, postcode and the lat/lng-derived town so a multi-word
+    // search narrows rather than broadens.
     if (q) {
       const words = q.split(/\s+/).filter(Boolean).slice(0, 6);
       for (const word of words) {
         const cleaned = word.replace(/[,()%*]/g, '');
         if (!cleaned) continue;
         const term = `%${cleaned}%`;
-        query = query.or(`name.ilike.${term},description.ilike.${term}`);
+        query = query.or(`name.ilike.${term},description.ilike.${term},postcode.ilike.${term},town.ilike.${term}`);
       }
     }
 
