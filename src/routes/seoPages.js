@@ -168,9 +168,24 @@ const LIST_BUSINESS_CTA = `
     <a class="btn" href="/?listBusiness=1">List your business free →</a>
   </div>`;
 
-function categoryNav(activeCategory) {
-  const items = [`<li><a href="/directory"${activeCategory ? '' : ' class="active"'}>All categories</a></li>`]
-    .concat(BUSINESS_CATEGORIES.map((c) => `<li><a href="${categoryPath(c)}"${c === activeCategory ? ' class="active"' : ''}>${escHtml(c)}</a></li>`));
+// q is threaded through so that switching category with the pills below
+// doesn't throw away an area search already typed in — e.g. searching
+// "Redruth" and then clicking "Food & Drink" narrows to Redruth businesses
+// in that category, instead of silently dropping back to an unfiltered
+// category page. categoryPath() itself deliberately stays q-less (it's
+// also used for the canonical URL and sitemap, which shouldn't vary per
+// search), so the q param is appended here instead.
+function categoryNavPath(category, q) {
+  const params = new URLSearchParams();
+  if (category) params.set('category', category);
+  if (q) params.set('q', q);
+  const qs = params.toString();
+  return qs ? `/directory?${qs}` : '/directory';
+}
+
+function categoryNav(activeCategory, q) {
+  const items = [`<li><a href="${categoryNavPath(null, q)}"${activeCategory ? '' : ' class="active"'}>All categories</a></li>`]
+    .concat(BUSINESS_CATEGORIES.map((c) => `<li><a href="${categoryNavPath(c, q)}"${c === activeCategory ? ' class="active"' : ''}>${escHtml(c)}</a></li>`));
   return `<ul class="cat-nav">${items.join('')}</ul>`;
 }
 
@@ -184,7 +199,7 @@ function searchFormHtml(category, q) {
   const options = ['<option value="">All categories</option>']
     .concat(BUSINESS_CATEGORIES.map((c) => `<option value="${escHtml(c)}"${c === category ? ' selected' : ''}>${escHtml(c)}</option>`));
   return `<form method="GET" action="/directory" class="search-form">
-    <input type="text" name="q" placeholder="Search by business name…" value="${escHtml(q || '')}" />
+    <input type="text" name="q" placeholder="Search by business name or area (e.g. Falmouth)…" value="${escHtml(q || '')}" />
     <select name="category">${options.join('')}</select>
     <button type="submit">Search</button>
   </form>`;
@@ -280,7 +295,7 @@ router.get('/directory', async (req, res) => {
         : `A free, growing directory of local businesses across Cornwall — from trades and cafes to days out and professional services. No charge to list, ever.`}</p>`;
     body += searchFormHtml(category, q);
     body += LIST_BUSINESS_CTA;
-    body += categoryNav(category);
+    body += categoryNav(category, q);
 
     if (!businesses.length) {
       body += `<p class="lede">No businesses found${searching ? ` for "${escHtml(q)}"` : category ? ' in this category' : ''}${searching ? '' : ' yet'} — ${searching ? 'try a different search, or browse by category above.' : 'be the first.'}</p>`;
