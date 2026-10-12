@@ -24,6 +24,7 @@ const { stripe } = require('../lib/stripeClient');
 const { supabaseAdmin } = require('../lib/supabaseClient');
 const { requireAuth } = require('../middleware/requireAuth');
 const { geocodeLocation } = require('../fetchers/geocode');
+const { nearestTown } = require('../lib/cornwallTowns');
 const { BUSINESS_CATEGORIES } = require('../lib/businessCategories');
 const { sendEmail, isConfigured: emailConfigured } = require('../lib/emailClient');
 
@@ -135,7 +136,7 @@ router.get('/me', async (req, res) => {
   try {
     const { data: business, error } = await supabaseAdmin
       .from('businesses')
-      .select('id, name, category, description, phone, website, postcode, lat, lng, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at')
+      .select('id, name, category, description, phone, website, postcode, town, lat, lng, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at')
       .eq('id', req.user.id)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -188,6 +189,10 @@ router.put('/listing', async (req, res) => {
 
   try {
     const geo = await geocodeLocation(postcode);
+    // Derive a canonical town name from the geocoded lat/lon rather than
+    // trusting whatever free text was typed into "postcode or town" — people
+    // enter either one, so searches need something consistent to match against.
+    const town = nearestTown(geo.lat, geo.lon);
 
     const { data: existing } = await supabaseAdmin
       .from('businesses')
@@ -208,6 +213,7 @@ router.put('/listing', async (req, res) => {
         postcode: postcode.trim(),
         lat: geo.lat,
         lng: geo.lon,
+        town: town ? town.name : null,
         logo_url: existing ? existing.logo_url : null,
         stripe_customer_id: existing ? existing.stripe_customer_id : null,
         subscription_status: existing ? existing.subscription_status : 'free',
@@ -215,7 +221,7 @@ router.put('/listing', async (req, res) => {
         voucher_description: cleanVoucherDescription,
         voucher_expires_at: cleanVoucherExpiresAt,
       })
-      .select('id, name, category, description, phone, website, postcode, lat, lng, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at')
+      .select('id, name, category, description, phone, website, postcode, town, lat, lng, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at')
       .single();
     if (error) throw new Error(error.message);
 

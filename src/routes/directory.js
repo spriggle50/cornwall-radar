@@ -63,7 +63,7 @@ router.get('/', async (req, res) => {
 
     let query = supabaseAdmin
       .from('businesses')
-      .select('id, name, category, description, phone, website, postcode, lat, lng, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at');
+      .select('id, name, category, description, phone, website, postcode, town, lat, lng, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at');
 
     // A single category keeps the exact-match ILIKE the directory's own
     // filter dropdown has always used. A comma-separated list (used by the
@@ -108,7 +108,7 @@ router.get('/', async (req, res) => {
         const cleaned = word.replace(/[,()%*]/g, '');
         if (!cleaned) continue;
         const term = `%${cleaned}%`;
-        query = query.or(`name.ilike.${term},description.ilike.${term},postcode.ilike.${term}`);
+        query = query.or(`name.ilike.${term},description.ilike.${term},postcode.ilike.${term},town.ilike.${term}`);
       }
     }
 
