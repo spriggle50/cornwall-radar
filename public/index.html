@@ -1789,7 +1789,7 @@
         + (categories || []).map((c) => '<option value="' + c.replace(/"/g, '&quot;') + '"'
           + (directoryFilters.category === c ? ' selected' : '') + '>' + c + '</option>').join('');
       const searchBar = '<div class="directory-search-bar">'
-        + '<input type="text" id="directorySearchInput" placeholder="Search businesses…" value="'
+        + '<input type="text" id="directorySearchInput" placeholder="Search businesses or area (e.g. Falmouth)…" value="'
         + (directoryFilters.q || '').replace(/"/g, '&quot;') + '" oninput="onDirectorySearchInput(this.value)" />'
         + '<select id="directoryCategoryInput" onchange="onDirectoryCategoryChange(this.value)">' + categoryOptions + '</select>'
         + '</div>';

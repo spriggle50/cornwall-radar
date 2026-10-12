@@ -94,7 +94,7 @@ router.get('/', async (req, res) => {
       // name/description, so "fish chips" never matched "The Fish & Chip
       // Shop" (the "&" breaks the substring) and word order/spacing had
       // to line up exactly. Splitting into words and requiring each one
-      // to appear SOMEWHERE in name or description (chaining .or() calls,
+      // to appear SOMEWHERE in name, description, or postcode/town (chaining .or() calls,
       // which supabase/PostgREST ANDs together) matches regardless of
       // order, punctuation in between, or which field each word is in.
       // Capped at 6 words — plenty for a business name search, and keeps
@@ -108,7 +108,7 @@ router.get('/', async (req, res) => {
         const cleaned = word.replace(/[,()%*]/g, '');
         if (!cleaned) continue;
         const term = `%${cleaned}%`;
-        query = query.or(`name.ilike.${term},description.ilike.${term}`);
+        query = query.or(`name.ilike.${term},description.ilike.${term},postcode.ilike.${term}`);
       }
     }
 
