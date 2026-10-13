@@ -12,6 +12,7 @@ const reviewsRoute = require('./routes/reviews');
 const adminRoute = require('./routes/admin');
 const alertsRoute = require('./routes/alerts');
 const seoPagesRoute = require('./routes/seoPages');
+const resendWebhook = require('./routes/resendWebhook');
 const { geocodeLocation } = require('./fetchers/geocode');
 const { runMorningDigest } = require('./jobs/morningDigest');
 const { runAlertEngine } = require('./jobs/alertEngine');
@@ -29,6 +30,11 @@ app.use(cors());
 // in the app (including the rest of /api/billing) is fine with the normal
 // parsed JSON body and is mounted after express.json() as usual.
 app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), billing.webhookHandler);
+// Same raw-body requirement as the Stripe webhook above, for the same
+// reason — Resend's Svix signature check needs the exact original bytes.
+// See src/routes/resendWebhook.js for what this actually does (marking a
+// real mail-server bounce/complaint on an outreach lead as 'bounced').
+app.post('/api/resend/webhook', express.raw({ type: 'application/json' }), resendWebhook.webhookHandler);
 
 app.use(express.json());
 
