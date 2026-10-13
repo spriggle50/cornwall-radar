@@ -159,7 +159,23 @@ async function main() {
 
       if (sendError) {
         console.error(`  FAILED  ${lead.business_name} <${recipient}>: ${sendError.message}`);
-        continue; // leave status as 'pending' so it's retried next run
+        // A validation_error (bad `to` address, unverified domain, etc.) will
+        // never succeed on retry. Leaving the row "pending" meant this exact
+        // lead got re-picked every single run (ORDER BY id ascending) and
+        // blocked every other pending lead behind it in the group forever —
+        // which is what happened with a scraped email missing its final
+        // letter. Take it out of the queue instead, reusing the existing
+        // "bounced" status (same one a real mail-server bounce would use)
+        // so it still shows up for review rather than silently vanishing.
+        // Rate limits (429) and server errors (5xx) aren't validation
+        // errors, so they're left "pending" and retried as before.
+        if (!TEST_TO && sendError.name === "validation_error") {
+          await supabase
+            .from("leads")
+            .update({ status: "bounced", last_error: sendError.message })
+            .eq("id", lead.id);
+        }
+        continue;
       }
 
       console.log(`  sent    ${lead.business_name} -> ${recipient}  (${data?.id})`);
