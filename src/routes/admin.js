@@ -12,6 +12,8 @@ const { supabaseAdmin } = require('../lib/supabaseClient');
 const { requireAuth } = require('../middleware/requireAuth');
 const { requireAdmin } = require('../middleware/requireAdmin');
 const { geocodeLocation } = require('../fetchers/geocode');
+const { nearestTown } = require('../lib/cornwallTowns');
+const crypto = require('crypto');
 const { BUSINESS_CATEGORIES } = require('../lib/businessCategories');
 
 router.use(requireAuth, requireAdmin);
@@ -37,7 +39,7 @@ router.get('/businesses', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('businesses')
-      .select('id, name, category, postcode, email, phone, website, subscription_status, created_at')
+      .select('id, name, category, postcode, town, email, phone, website, subscription_status, created_at')
       .order('created_at', { ascending: false });
     if (error) throw new Error(error.message);
     res.json({ businesses: data || [] });
@@ -57,6 +59,74 @@ router.get('/businesses', async (req, res) => {
 // the contact address shown in this admin list — NOT the owner's actual
 // Supabase Auth sign-in, which can't be (and doesn't need to be) changed
 // from here.
+// POST /api/admin/businesses — creates a listing on a business's behalf,
+// for someone who replied to an outreach email asking to be added rather
+// than signing up and doing it themselves through routes/business.js's own
+// PUT /listing. The row gets a freshly generated id that ISN'T tied to any
+// Supabase Auth account — unlike every listing created the normal way,
+// where id === the owner's auth user id (see business.js). That means:
+//   - it shows up in the directory exactly like any other listing, and
+//   - the owner can't sign in and see it as "their" listing later, even if
+//     they create an account with the same email — there's no claim flow
+//     for that yet. Ady manages it from here (edit/remove, both already
+//     above) unless/until that's built. Worth knowing before using this
+//     for someone likely to want self-service access later.
+// Same field set and validation as the PUT below, minus the id (generated)
+// and subscription_status (always starts 'free', same as a self-signup).
+router.post('/businesses', async (req, res) => {
+  const { name, category, phone, website, email, postcode, description } = req.body || {};
+  if (!name || !name.trim() || !postcode || !postcode.trim()) {
+    return res.status(400).json({ error: 'A business name and postcode/town are both required' });
+  }
+  if (!category || !BUSINESS_CATEGORIES.includes(category)) {
+    return res.status(400).json({ error: 'Choose a category from the list' });
+  }
+  if (!email || !email.trim()) {
+    return res.status(400).json({ error: 'A contact email is required' });
+  }
+
+  try {
+    // Catches the obvious accidental-duplicate case — adding the same
+    // business twice because an earlier reply was forgotten about — without
+    // trying to be a general dedupe system (a business with more than one
+    // real email, or a slightly different spelling, won't be caught here).
+    const { data: existing } = await supabaseAdmin
+      .from('businesses')
+      .select('id, name')
+      .eq('email', email.trim().toLowerCase())
+      .maybeSingle();
+    if (existing) {
+      return res.status(409).json({ error: `A listing already exists for this email (${existing.name}) — edit that one instead.` });
+    }
+
+    const geo = await geocodeLocation(postcode);
+    const town = nearestTown(geo.lat, geo.lon);
+
+    const { data, error } = await supabaseAdmin
+      .from('businesses')
+      .insert({
+        id: crypto.randomUUID(),
+        name: name.trim(),
+        category: category.trim(),
+        description: (description || '').trim() || null,
+        phone: (phone || '').trim() || null,
+        website: normalizeWebsiteUrl(website),
+        email: email.trim().toLowerCase(),
+        postcode: postcode.trim(),
+        lat: geo.lat,
+        lng: geo.lon,
+        town: town ? town.name : null,
+        subscription_status: 'free',
+      })
+      .select('id, name, category, postcode, town, email, phone, website, subscription_status, created_at')
+      .single();
+    if (error) throw new Error(error.message);
+    res.status(201).json(data);
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Could not create the listing — check the postcode/town is valid' });
+  }
+});
+
 router.put('/businesses/:id', async (req, res) => {
   const { name, category, phone, website, email, postcode } = req.body || {};
   if (!name || !name.trim() || !postcode || !postcode.trim()) {
@@ -75,6 +145,7 @@ router.put('/businesses/:id', async (req, res) => {
     // change" and cheap enough (geocodeLocation has its own caching) not to
     // matter.
     const geo = await geocodeLocation(postcode);
+    const town = nearestTown(geo.lat, geo.lon);
 
     const { data, error } = await supabaseAdmin
       .from('businesses')
@@ -87,9 +158,10 @@ router.put('/businesses/:id', async (req, res) => {
         postcode: postcode.trim(),
         lat: geo.lat,
         lng: geo.lon,
+        town: town ? town.name : null,
       })
       .eq('id', req.params.id)
-      .select('id, name, category, postcode, email, phone, website, subscription_status, created_at')
+      .select('id, name, category, postcode, town, email, phone, website, subscription_status, created_at')
       .single();
     if (error) throw new Error(error.message);
     res.json(data);

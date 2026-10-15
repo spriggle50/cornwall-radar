@@ -3103,13 +3103,63 @@
           }).join('')
         : '<p class="account-note">No reviews.</p>';
 
+      // Hidden by default, same toggle pattern as each row's own edit
+      // form below — for adding a listing on behalf of someone who replied
+      // to an outreach email asking to be added rather than signing up and
+      // doing it themselves. The business this creates has no owner login
+      // (see the server-side comment on POST /api/admin/businesses for
+      // what that does and doesn't mean) — it's edited/removed from this
+      // same panel afterwards, same as any other row above.
+      const addForm = '<div id="adminBizAdd" style="display:none; margin:10px 0 16px; padding:10px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border);">'
+        + '<div class="account-field"><label>Business name</label><input type="text" id="adminAddName" /></div>'
+        + '<div class="account-field"><label>Category</label><select id="adminAddCategory">'
+        + '<option value="">Choose a category…</option>'
+        + businessCategories.map((c) => '<option value="' + esc(c) + '">' + c + '</option>').join('')
+        + '</select></div>'
+        + '<div class="account-field"><label>Postcode or town</label><input type="text" id="adminAddPostcode" /></div>'
+        + '<div class="account-field"><label>Contact email</label><input type="text" id="adminAddEmail" /></div>'
+        + '<div class="account-field"><label>Phone</label><input type="text" id="adminAddPhone" /></div>'
+        + '<div class="account-field"><label>Website</label><input type="text" id="adminAddWebsite" placeholder="yourbusiness.co.uk" /></div>'
+        + '<div class="account-field"><label>Description (optional)</label><input type="text" id="adminAddDescription" /></div>'
+        + '<button class="btn-primary" onclick="addAdminBusiness()">Add listing</button> '
+        + '<button class="btn-secondary" onclick="toggleAdminAddBusiness()">Cancel</button>'
+        + '<div id="adminAddStatus"></div>'
+        + '</div>';
+
       return '<div class="card"><h2>🛠️ Admin</h2>'
         + '<p class="account-note">Everything the moderation emails let you do, but reachable while signed in — for when an email\'s gone missing.</p>'
         + '<h3 style="margin-bottom:6px;">All listings (' + (businesses || []).length + ')</h3>'
+        + '<button class="btn-secondary" onclick="toggleAdminAddBusiness()">+ Add a business</button>'
+        + addForm
         + businessRows
         + '<h3 style="margin:16px 0 6px;">All reviews (' + (reviews || []).length + ')</h3>'
         + reviewRows
         + '</div>';
+    }
+
+    function toggleAdminAddBusiness() {
+      const form = document.getElementById('adminBizAdd');
+      if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    }
+
+    async function addAdminBusiness() {
+      const status = document.getElementById('adminAddStatus');
+      const payload = {
+        name: document.getElementById('adminAddName').value.trim(),
+        category: document.getElementById('adminAddCategory').value,
+        postcode: document.getElementById('adminAddPostcode').value.trim(),
+        email: document.getElementById('adminAddEmail').value.trim(),
+        phone: document.getElementById('adminAddPhone').value.trim(),
+        website: document.getElementById('adminAddWebsite').value.trim(),
+        description: document.getElementById('adminAddDescription').value.trim(),
+      };
+      if (status) status.innerHTML = '<p class="account-note">Adding…</p>';
+      try {
+        await authedFetch('/api/admin/businesses', { method: 'POST', body: JSON.stringify(payload) });
+        renderAccountPanel();
+      } catch (err) {
+        if (status) status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
     }
 
     function toggleAdminEditBusiness(id) {
