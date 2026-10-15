@@ -28,6 +28,32 @@ function normalizeWebsiteUrl(raw) {
   return /^https?:\/\//i.test(trimmed) ? trimmed : 'https://' + trimmed;
 }
 
+// Same voucher rules as business.js's own PUT /listing — a voucher needs a
+// title, an optional description/expiry ride along with it, and an expiry
+// (if set) has to be a real, future date. Returns { error } on a bad
+// input, or { voucher_title, voucher_description, voucher_expires_at }
+// ready to drop straight into an insert/update payload. Added so Ady can
+// set a voucher for a business that replied by email and has no reason to
+// ever sign in and do it themselves — this was previously owner-only.
+function cleanVoucherFields({ voucherTitle, voucherDescription, voucherExpiresAt }) {
+  const voucher_title = (voucherTitle || '').trim() || null;
+  const voucher_description = (voucherDescription || '').trim() || null;
+  const voucher_expires_at = (voucherExpiresAt || '').trim() || null;
+  if (!voucher_title && (voucher_description || voucher_expires_at)) {
+    return { error: 'A voucher needs a short title' };
+  }
+  if (voucher_expires_at) {
+    const todayKey = new Date().toISOString().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(voucher_expires_at) || Number.isNaN(Date.parse(voucher_expires_at))) {
+      return { error: 'Voucher expiry must be a valid date' };
+    }
+    if (voucher_expires_at < todayKey) {
+      return { error: 'Voucher expiry date must be in the future' };
+    }
+  }
+  return { voucher_title, voucher_description, voucher_expires_at };
+}
+
 // GET /api/admin/businesses — every business listing, newest first. Includes
 // the owner's login email (same information the emailed moderation link
 // already shows) — this endpoint only ever answers to the admin, so there's
@@ -38,7 +64,7 @@ router.get('/businesses', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('businesses')
-      .select('id, name, category, secondary_category, postcode, town, email, phone, website, subscription_status, created_at')
+      .select('id, name, category, secondary_category, postcode, town, email, phone, website, subscription_status, voucher_title, voucher_description, voucher_expires_at, created_at')
       .order('created_at', { ascending: false });
     if (error) throw new Error(error.message);
     res.json({ businesses: data || [] });
@@ -62,7 +88,7 @@ router.get('/businesses', async (req, res) => {
 // separate "claim" flow needed, because the account already exists, just
 // dormant until they use it.
 router.post('/businesses', async (req, res) => {
-  const { name, category, secondaryCategory, phone, website, email, postcode, description } = req.body || {};
+  const { name, category, secondaryCategory, phone, website, email, postcode, description, voucherTitle, voucherDescription, voucherExpiresAt } = req.body || {};
   if (!name || !name.trim() || !postcode || !postcode.trim()) {
     return res.status(400).json({ error: 'A business name and postcode/town are both required' });
   }
@@ -78,6 +104,10 @@ router.post('/businesses', async (req, res) => {
   }
   if (!email || !email.trim()) {
     return res.status(400).json({ error: 'A contact email is required' });
+  }
+  const voucherFields = cleanVoucherFields({ voucherTitle, voucherDescription, voucherExpiresAt });
+  if (voucherFields.error) {
+    return res.status(400).json({ error: voucherFields.error });
   }
 
   try {
@@ -145,8 +175,11 @@ router.post('/businesses', async (req, res) => {
         lng: geo.lon,
         town: town ? town.name : null,
         subscription_status: 'free',
+        voucher_title: voucherFields.voucher_title,
+        voucher_description: voucherFields.voucher_description,
+        voucher_expires_at: voucherFields.voucher_expires_at,
       })
-      .select('id, name, category, secondary_category, postcode, town, email, phone, website, subscription_status, created_at')
+      .select('id, name, category, secondary_category, postcode, town, email, phone, website, subscription_status, voucher_title, voucher_description, voucher_expires_at, created_at')
       .single();
     if (error) throw new Error(error.message);
     res.status(201).json(data);
@@ -158,16 +191,17 @@ router.post('/businesses', async (req, res) => {
 // PUT /api/admin/businesses/:id — lets Ady fix a business's own basic
 // details on their behalf (a mistyped website was the original case this
 // was built for) without the owner needing to sign in and do it themselves.
-// Deliberately limited to the fields most likely to need a quick correction
-// — name, category, secondary category, phone, website, postcode, and the
-// account's contact email — NOT logo/description/voucher/vacancies, which
-// stay owner-only edits via routes/business.js so a business's own richer
-// content is never silently touched by anyone but them. `email` here is
-// businesses.email — the contact address shown in this admin list — NOT
-// the owner's actual Supabase Auth sign-in, which can't be (and doesn't
-// need to be) changed from here.
+// Covers name, category, secondary category, phone, website, postcode, the
+// account's contact email, and the voucher — NOT logo/description/
+// vacancies, which stay owner-only edits via routes/business.js so a
+// business's own richer content is never silently touched by anyone but
+// them. The voucher's the one exception: added so Ady can set one for a
+// business that has no reason to ever sign in and do it themselves (see
+// POST above). `email` here is businesses.email — the contact address
+// shown in this admin list — NOT the owner's actual Supabase Auth sign-in,
+// which can't be (and doesn't need to be) changed from here.
 router.put('/businesses/:id', async (req, res) => {
-  const { name, category, secondaryCategory, phone, website, email, postcode } = req.body || {};
+  const { name, category, secondaryCategory, phone, website, email, postcode, voucherTitle, voucherDescription, voucherExpiresAt } = req.body || {};
   if (!name || !name.trim() || !postcode || !postcode.trim()) {
     return res.status(400).json({ error: 'A business name and postcode/town are both required' });
   }
@@ -183,6 +217,10 @@ router.put('/businesses/:id', async (req, res) => {
   }
   if (!email || !email.trim()) {
     return res.status(400).json({ error: 'A contact email is required' });
+  }
+  const voucherFields = cleanVoucherFields({ voucherTitle, voucherDescription, voucherExpiresAt });
+  if (voucherFields.error) {
+    return res.status(400).json({ error: voucherFields.error });
   }
 
   try {
@@ -206,9 +244,12 @@ router.put('/businesses/:id', async (req, res) => {
         lat: geo.lat,
         lng: geo.lon,
         town: town ? town.name : null,
+        voucher_title: voucherFields.voucher_title,
+        voucher_description: voucherFields.voucher_description,
+        voucher_expires_at: voucherFields.voucher_expires_at,
       })
       .eq('id', req.params.id)
-      .select('id, name, category, secondary_category, postcode, town, email, phone, website, subscription_status, created_at')
+      .select('id, name, category, secondary_category, postcode, town, email, phone, website, subscription_status, voucher_title, voucher_description, voucher_expires_at, created_at')
       .single();
     if (error) throw new Error(error.message);
     res.json(data);

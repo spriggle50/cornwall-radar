@@ -3084,6 +3084,13 @@
               + '<div class="account-field"><label>Website</label><input type="text" id="adminBizWebsite-' + b.id + '" value="' + esc(b.website) + '" placeholder="yourbusiness.co.uk" /></div>'
               + '<div class="account-field"><label>Contact email</label><input type="text" id="adminBizEmail-' + b.id + '" value="' + esc(b.email) + '" />'
               + '<p class="account-note">This is just the contact address shown here — it doesn\'t change the owner\'s actual sign-in.</p></div>'
+              + '<div class="account-field"><label>Voucher / offer (optional)</label>'
+              + '<p class="account-note">Shown to everyone on the Vouchers & Offers page, and as a badge on the listing. Leave the title blank to remove it.</p>'
+              + '<input type="text" id="adminBizVoucherTitle-' + b.id + '" value="' + esc(b.voucher_title) + '" placeholder="e.g. 20% off entry" style="margin-bottom:6px;" />'
+              + '<input type="text" id="adminBizVoucherDescription-' + b.id + '" value="' + esc(b.voucher_description) + '" placeholder="Details, e.g. how to redeem (optional)" style="margin-bottom:6px;" />'
+              + '<label style="font-weight:400; font-size:0.82rem;">Ends on (optional)</label>'
+              + '<input type="date" id="adminBizVoucherExpiresAt-' + b.id + '" value="' + esc(b.voucher_expires_at) + '" />'
+              + '</div>'
               + '<button class="btn-primary" onclick="saveAdminBusinessEdit(\'' + b.id + '\')">Save changes</button> '
               + '<button class="btn-secondary" onclick="toggleAdminEditBusiness(\'' + b.id + '\')">Cancel</button>'
               + '<div id="adminBizEditStatus-' + b.id + '"></div>'
@@ -3136,6 +3143,13 @@
         + '<div class="account-field"><label>Phone</label><input type="text" id="adminAddPhone" /></div>'
         + '<div class="account-field"><label>Website</label><input type="text" id="adminAddWebsite" placeholder="yourbusiness.co.uk" /></div>'
         + '<div class="account-field"><label>Description (optional)</label><input type="text" id="adminAddDescription" /></div>'
+        + '<div class="account-field"><label>Voucher / offer (optional)</label>'
+        + '<p class="account-note">Shown to everyone on the Vouchers & Offers page, and as a badge on the listing.</p>'
+        + '<input type="text" id="adminAddVoucherTitle" placeholder="e.g. 20% off entry" style="margin-bottom:6px;" />'
+        + '<input type="text" id="adminAddVoucherDescription" placeholder="Details, e.g. how to redeem (optional)" style="margin-bottom:6px;" />'
+        + '<label style="font-weight:400; font-size:0.82rem;">Ends on (optional)</label>'
+        + '<input type="date" id="adminAddVoucherExpiresAt" />'
+        + '</div>'
         + '<button class="btn-primary" onclick="addAdminBusiness()">Add listing</button> '
         + '<button class="btn-secondary" onclick="toggleAdminAddBusiness()">Cancel</button>'
         + '<div id="adminAddStatus"></div>'
@@ -3168,6 +3182,9 @@
         phone: document.getElementById('adminAddPhone').value.trim(),
         website: document.getElementById('adminAddWebsite').value.trim(),
         description: document.getElementById('adminAddDescription').value.trim(),
+        voucherTitle: document.getElementById('adminAddVoucherTitle').value.trim(),
+        voucherDescription: document.getElementById('adminAddVoucherDescription').value.trim(),
+        voucherExpiresAt: document.getElementById('adminAddVoucherExpiresAt').value.trim(),
       };
       if (status) status.innerHTML = '<p class="account-note">Adding…</p>';
       try {
@@ -3193,6 +3210,9 @@
         phone: document.getElementById('adminBizPhone-' + id).value.trim(),
         website: document.getElementById('adminBizWebsite-' + id).value.trim(),
         email: document.getElementById('adminBizEmail-' + id).value.trim(),
+        voucherTitle: document.getElementById('adminBizVoucherTitle-' + id).value.trim(),
+        voucherDescription: document.getElementById('adminBizVoucherDescription-' + id).value.trim(),
+        voucherExpiresAt: document.getElementById('adminBizVoucherExpiresAt-' + id).value.trim(),
       };
       if (status) status.innerHTML = '<p class="account-note">Saving…</p>';
       try {
