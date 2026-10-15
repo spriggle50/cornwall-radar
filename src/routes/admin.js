@@ -13,7 +13,6 @@ const { requireAuth } = require('../middleware/requireAuth');
 const { requireAdmin } = require('../middleware/requireAdmin');
 const { geocodeLocation } = require('../fetchers/geocode');
 const { nearestTown } = require('../lib/cornwallTowns');
-const crypto = require('crypto');
 const { BUSINESS_CATEGORIES } = require('../lib/businessCategories');
 
 router.use(requireAuth, requireAdmin);
@@ -62,17 +61,17 @@ router.get('/businesses', async (req, res) => {
 // POST /api/admin/businesses — creates a listing on a business's behalf,
 // for someone who replied to an outreach email asking to be added rather
 // than signing up and doing it themselves through routes/business.js's own
-// PUT /listing. The row gets a freshly generated id that ISN'T tied to any
-// Supabase Auth account — unlike every listing created the normal way,
-// where id === the owner's auth user id (see business.js). That means:
-//   - it shows up in the directory exactly like any other listing, and
-//   - the owner can't sign in and see it as "their" listing later, even if
-//     they create an account with the same email — there's no claim flow
-//     for that yet. Ady manages it from here (edit/remove, both already
-//     above) unless/until that's built. Worth knowing before using this
-//     for someone likely to want self-service access later.
-// Same field set and validation as the PUT below, minus the id (generated)
-// and subscription_status (always starts 'free', same as a self-signup).
+// PUT /listing.
+//
+// businesses.id has a foreign-key constraint against auth.users (same as
+// every listing created the normal way, where id === the owner's auth user
+// id) — a plain generated UUID violates it (businesses_id_fkey). So this
+// creates a confirmed, passwordless Supabase Auth user for their email
+// first and uses THAT id. That's not just working around the constraint:
+// it means the business can later sign in with the normal magic link on
+// cornwallradar.co.uk and land on this exact account/listing — no
+// separate "claim" flow needed, because the account already exists, just
+// dormant until they use it.
 router.post('/businesses', async (req, res) => {
   const { name, category, phone, website, email, postcode, description } = req.body || {};
   if (!name || !name.trim() || !postcode || !postcode.trim()) {
@@ -86,6 +85,8 @@ router.post('/businesses', async (req, res) => {
   }
 
   try {
+    const emailLower = email.trim().toLowerCase();
+
     // Catches the obvious accidental-duplicate case — adding the same
     // business twice because an earlier reply was forgotten about — without
     // trying to be a general dedupe system (a business with more than one
@@ -93,10 +94,40 @@ router.post('/businesses', async (req, res) => {
     const { data: existing } = await supabaseAdmin
       .from('businesses')
       .select('id, name')
-      .eq('email', email.trim().toLowerCase())
+      .eq('email', emailLower)
       .maybeSingle();
     if (existing) {
       return res.status(409).json({ error: `A listing already exists for this email (${existing.name}) — edit that one instead.` });
+    }
+
+    // Get (or create) the Auth user this listing's id has to point at.
+    const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+      email: emailLower,
+      email_confirm: true,
+    });
+
+    let ownerId = created?.user?.id;
+    if (!ownerId) {
+      // An account for this email already exists — e.g. they signed up at
+      // some point (consumer or business) but never finished adding a
+      // listing. Reuse it instead of erroring, so this attaches to their
+      // real account rather than failing outright. The admin API has no
+      // email-filter on listUsers in this supabase-js version, so this
+      // pages through and matches client-side — fine at this project's
+      // scale; revisit if the user count gets into the thousands.
+      const isDuplicate = createErr && (createErr.code === 'email_exists' || /already.*registered|already.*exists/i.test(createErr.message || ''));
+      if (!isDuplicate) throw new Error(createErr?.message || 'Could not create an account for this email');
+
+      for (let page = 1; page <= 5 && !ownerId; page += 1) {
+        const { data: pageData, error: listErr } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 });
+        if (listErr) throw new Error(listErr.message);
+        const match = (pageData?.users || []).find((u) => (u.email || '').toLowerCase() === emailLower);
+        if (match) ownerId = match.id;
+        if (!pageData?.users?.length || pageData.users.length < 1000) break;
+      }
+      if (!ownerId) {
+        throw new Error(`An account for ${emailLower} already exists but couldn't be looked up — try again, or check Supabase Auth directly.`);
+      }
     }
 
     const geo = await geocodeLocation(postcode);
@@ -105,13 +136,13 @@ router.post('/businesses', async (req, res) => {
     const { data, error } = await supabaseAdmin
       .from('businesses')
       .insert({
-        id: crypto.randomUUID(),
+        id: ownerId,
         name: name.trim(),
         category: category.trim(),
         description: (description || '').trim() || null,
         phone: (phone || '').trim() || null,
         website: normalizeWebsiteUrl(website),
-        email: email.trim().toLowerCase(),
+        email: emailLower,
         postcode: postcode.trim(),
         lat: geo.lat,
         lng: geo.lon,
