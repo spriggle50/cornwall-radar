@@ -63,19 +63,29 @@ router.get('/', async (req, res) => {
 
     let query = supabaseAdmin
       .from('businesses')
-      .select('id, name, category, description, phone, website, postcode, town, lat, lng, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at');
+      .select('id, name, category, secondary_category, description, phone, website, postcode, town, lat, lng, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at');
 
     // A single category keeps the exact-match ILIKE the directory's own
     // filter dropdown has always used. A comma-separated list (used by the
     // Days Out & Activities card, which spans both the "Attractions" and
-    // "Activities" categories) switches to an exact-value .in() match
-    // instead — these come from our own fixed category list, not free text,
-    // so no ILIKE wildcard is needed there.
+    // "Activities" categories) does the same across all of them. Either
+    // way, a listing matches if ANY requested category is either its
+    // primary OR its secondary category (see businesses.secondary_category
+    // — a vineyard doing wine tastings is both "Food & Drink" and
+    // "Activities", and should show up under either). Built as a
+    // hand-rolled .or() string rather than supabase-js's own .in(),
+    // because a category value can itself contain a comma ("Arts, Crafts
+    // & Gifts") — each value is wrapped in double quotes, PostgREST's own
+    // escaping for exactly that case, so it's never mistaken for a second
+    // list item or a second .or() condition.
     if (category && category.trim()) {
       const categories = category.split(',').map((c) => c.trim()).filter(Boolean);
-      query = categories.length > 1
-        ? query.in('category', categories)
-        : query.ilike('category', categories[0]);
+      const orParts = [];
+      for (const c of categories) {
+        const quoted = `"${c.replace(/"/g, '\\"')}"`;
+        orParts.push(`category.ilike.${quoted}`, `secondary_category.ilike.${quoted}`);
+      }
+      if (orParts.length) query = query.or(orParts.join(','));
     }
     // ?voucher=1 — used by the "Vouchers & Offers" page (any category, not
     // just Attractions/Activities) to show only listings currently offering

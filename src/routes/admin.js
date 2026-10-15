@@ -38,7 +38,7 @@ router.get('/businesses', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('businesses')
-      .select('id, name, category, postcode, town, email, phone, website, subscription_status, created_at')
+      .select('id, name, category, secondary_category, postcode, town, email, phone, website, subscription_status, created_at')
       .order('created_at', { ascending: false });
     if (error) throw new Error(error.message);
     res.json({ businesses: data || [] });
@@ -47,17 +47,6 @@ router.get('/businesses', async (req, res) => {
   }
 });
 
-// PUT /api/admin/businesses/:id — lets Ady fix a business's own basic
-// details on their behalf (a mistyped website was the original case this
-// was built for) without the owner needing to sign in and do it themselves.
-// Deliberately limited to the fields most likely to need a quick correction
-// — name, category, phone, website, postcode, and the account's contact
-// email — NOT logo/description/voucher/vacancies, which stay owner-only
-// edits via routes/business.js so a business's own richer content is never
-// silently touched by anyone but them. `email` here is businesses.email —
-// the contact address shown in this admin list — NOT the owner's actual
-// Supabase Auth sign-in, which can't be (and doesn't need to be) changed
-// from here.
 // POST /api/admin/businesses — creates a listing on a business's behalf,
 // for someone who replied to an outreach email asking to be added rather
 // than signing up and doing it themselves through routes/business.js's own
@@ -73,12 +62,19 @@ router.get('/businesses', async (req, res) => {
 // separate "claim" flow needed, because the account already exists, just
 // dormant until they use it.
 router.post('/businesses', async (req, res) => {
-  const { name, category, phone, website, email, postcode, description } = req.body || {};
+  const { name, category, secondaryCategory, phone, website, email, postcode, description } = req.body || {};
   if (!name || !name.trim() || !postcode || !postcode.trim()) {
     return res.status(400).json({ error: 'A business name and postcode/town are both required' });
   }
   if (!category || !BUSINESS_CATEGORIES.includes(category)) {
     return res.status(400).json({ error: 'Choose a category from the list' });
+  }
+  const cleanSecondaryCategory = (secondaryCategory || '').trim() || null;
+  if (cleanSecondaryCategory && !BUSINESS_CATEGORIES.includes(cleanSecondaryCategory)) {
+    return res.status(400).json({ error: 'Choose a secondary category from the list, or leave it blank' });
+  }
+  if (cleanSecondaryCategory && cleanSecondaryCategory === category) {
+    return res.status(400).json({ error: 'Secondary category must be different from the main category' });
   }
   if (!email || !email.trim()) {
     return res.status(400).json({ error: 'A contact email is required' });
@@ -139,6 +135,7 @@ router.post('/businesses', async (req, res) => {
         id: ownerId,
         name: name.trim(),
         category: category.trim(),
+        secondary_category: cleanSecondaryCategory,
         description: (description || '').trim() || null,
         phone: (phone || '').trim() || null,
         website: normalizeWebsiteUrl(website),
@@ -149,7 +146,7 @@ router.post('/businesses', async (req, res) => {
         town: town ? town.name : null,
         subscription_status: 'free',
       })
-      .select('id, name, category, postcode, town, email, phone, website, subscription_status, created_at')
+      .select('id, name, category, secondary_category, postcode, town, email, phone, website, subscription_status, created_at')
       .single();
     if (error) throw new Error(error.message);
     res.status(201).json(data);
@@ -158,13 +155,31 @@ router.post('/businesses', async (req, res) => {
   }
 });
 
+// PUT /api/admin/businesses/:id — lets Ady fix a business's own basic
+// details on their behalf (a mistyped website was the original case this
+// was built for) without the owner needing to sign in and do it themselves.
+// Deliberately limited to the fields most likely to need a quick correction
+// — name, category, secondary category, phone, website, postcode, and the
+// account's contact email — NOT logo/description/voucher/vacancies, which
+// stay owner-only edits via routes/business.js so a business's own richer
+// content is never silently touched by anyone but them. `email` here is
+// businesses.email — the contact address shown in this admin list — NOT
+// the owner's actual Supabase Auth sign-in, which can't be (and doesn't
+// need to be) changed from here.
 router.put('/businesses/:id', async (req, res) => {
-  const { name, category, phone, website, email, postcode } = req.body || {};
+  const { name, category, secondaryCategory, phone, website, email, postcode } = req.body || {};
   if (!name || !name.trim() || !postcode || !postcode.trim()) {
     return res.status(400).json({ error: 'A business name and postcode/town are both required' });
   }
   if (!category || !BUSINESS_CATEGORIES.includes(category)) {
     return res.status(400).json({ error: 'Choose a category from the list' });
+  }
+  const cleanSecondaryCategory = (secondaryCategory || '').trim() || null;
+  if (cleanSecondaryCategory && !BUSINESS_CATEGORIES.includes(cleanSecondaryCategory)) {
+    return res.status(400).json({ error: 'Choose a secondary category from the list, or leave it blank' });
+  }
+  if (cleanSecondaryCategory && cleanSecondaryCategory === category) {
+    return res.status(400).json({ error: 'Secondary category must be different from the main category' });
   }
   if (!email || !email.trim()) {
     return res.status(400).json({ error: 'A contact email is required' });
@@ -183,6 +198,7 @@ router.put('/businesses/:id', async (req, res) => {
       .update({
         name: name.trim(),
         category: category.trim(),
+        secondary_category: cleanSecondaryCategory,
         phone: (phone || '').trim() || null,
         website: normalizeWebsiteUrl(website),
         email: email.trim(),
@@ -192,7 +208,7 @@ router.put('/businesses/:id', async (req, res) => {
         town: town ? town.name : null,
       })
       .eq('id', req.params.id)
-      .select('id, name, category, postcode, town, email, phone, website, subscription_status, created_at')
+      .select('id, name, category, secondary_category, postcode, town, email, phone, website, subscription_status, created_at')
       .single();
     if (error) throw new Error(error.message);
     res.json(data);

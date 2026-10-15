@@ -136,7 +136,7 @@ router.get('/me', async (req, res) => {
   try {
     const { data: business, error } = await supabaseAdmin
       .from('businesses')
-      .select('id, name, category, description, phone, website, postcode, town, lat, lng, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at')
+      .select('id, name, category, secondary_category, description, phone, website, postcode, town, lat, lng, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at')
       .eq('id', req.user.id)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -153,7 +153,7 @@ router.get('/me', async (req, res) => {
 // preserved across edits (a business editing their opening hours shouldn't
 // lose their Featured status).
 router.put('/listing', async (req, res) => {
-  const { name, category, description, phone, website, postcode, voucherTitle, voucherDescription, voucherExpiresAt } = req.body || {};
+  const { name, category, secondaryCategory, description, phone, website, postcode, voucherTitle, voucherDescription, voucherExpiresAt } = req.body || {};
   if (!name || !name.trim() || !postcode || !postcode.trim()) {
     return res.status(400).json({ error: 'A business name, category and postcode/town are all required' });
   }
@@ -163,6 +163,19 @@ router.put('/listing', async (req, res) => {
   // each business happened to spell their trade.
   if (!category || !BUSINESS_CATEGORIES.includes(category)) {
     return res.status(400).json({ error: 'Choose a category from the list' });
+  }
+  // Secondary category is optional — for a business that genuinely spans
+  // two categories (a vineyard doing both wine sales AND tastings/tours,
+  // a surf school with its own cafe) rather than picking whichever fits
+  // worse. routes/directory.js and routes/seoPages.js both match a
+  // category filter against either column, so the listing shows up under
+  // both without duplicating the row.
+  const cleanSecondaryCategory = (secondaryCategory || '').trim() || null;
+  if (cleanSecondaryCategory && !BUSINESS_CATEGORIES.includes(cleanSecondaryCategory)) {
+    return res.status(400).json({ error: 'Choose a secondary category from the list, or leave it blank' });
+  }
+  if (cleanSecondaryCategory && cleanSecondaryCategory === category) {
+    return res.status(400).json({ error: 'Secondary category must be different from the main category' });
   }
 
   // Voucher fields are optional and open to every category (not just Days
@@ -207,6 +220,7 @@ router.put('/listing', async (req, res) => {
         email: req.user.email,
         name: name.trim(),
         category: category.trim(),
+        secondary_category: cleanSecondaryCategory,
         description: (description || '').trim() || null,
         phone: (phone || '').trim() || null,
         website: normalizeWebsiteUrl(website),
@@ -221,7 +235,7 @@ router.put('/listing', async (req, res) => {
         voucher_description: cleanVoucherDescription,
         voucher_expires_at: cleanVoucherExpiresAt,
       })
-      .select('id, name, category, description, phone, website, postcode, town, lat, lng, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at')
+      .select('id, name, category, secondary_category, description, phone, website, postcode, town, lat, lng, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at')
       .single();
     if (error) throw new Error(error.message);
 

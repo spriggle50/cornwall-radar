@@ -1772,7 +1772,7 @@
         + '<div class="directory-row-top">'
         + '<div style="display:flex; align-items:center; gap:10px;">' + logo
         + '<div><div class="directory-row-name">' + b.name + '</div>'
-        + '<div class="directory-row-category">' + b.category + (b.postcode ? ' · ' + b.postcode : '') + '</div></div></div>'
+        + '<div class="directory-row-category">' + b.category + (b.secondary_category ? ' + ' + b.secondary_category : '') + (b.postcode ? ' · ' + b.postcode : '') + '</div></div></div>'
         + (b.featured ? '<span class="featured-badge">★ Featured</span>' : '')
         + '</div>'
         + (b.description ? '<p class="directory-row-desc">' + b.description + '</p>' : '')
@@ -2827,6 +2827,13 @@
         + businessCategories.map((c) => '<option value="' + esc(c) + '"'
           + (business && business.category === c ? ' selected' : '') + '>' + c + '</option>').join('')
         + '</select></div>'
+        + '<div class="account-field"><label>Also show under (optional)</label><select id="bizSecondaryCategory">'
+        + '<option value="">None</option>'
+        + businessCategories.map((c) => '<option value="' + esc(c) + '"'
+          + (business && business.secondary_category === c ? ' selected' : '') + '>' + c + '</option>').join('')
+        + '</select>'
+        + '<p class="account-note">For a business that genuinely spans two categories — e.g. a vineyard doing wine tastings fits both Food &amp; Drink and Activities.</p>'
+        + '</div>'
         + '<div class="account-field"><label>Postcode or town</label><input type="text" id="bizPostcode" value="' + esc(business && business.postcode) + '" placeholder="TR1 2AB" /></div>'
         + '<div class="account-field"><label>Description (optional)</label><input type="text" id="bizDescription" value="' + esc(business && business.description) + '" placeholder="What you do, in a sentence" /></div>'
         + '<div class="account-field"><label>Phone (optional)</label><input type="text" id="bizPhone" value="' + esc(business && business.phone) + '" placeholder="01872 000000" /></div>'
@@ -3068,6 +3075,10 @@
               + '<div class="account-field"><label>Category</label><select id="adminBizCategory-' + b.id + '">'
               + businessCategories.map((c) => '<option value="' + esc(c) + '"' + (b.category === c ? ' selected' : '') + '>' + c + '</option>').join('')
               + '</select></div>'
+              + '<div class="account-field"><label>Also show under (optional)</label><select id="adminBizSecondaryCategory-' + b.id + '">'
+              + '<option value="">None</option>'
+              + businessCategories.map((c) => '<option value="' + esc(c) + '"' + (b.secondary_category === c ? ' selected' : '') + '>' + c + '</option>').join('')
+              + '</select></div>'
               + '<div class="account-field"><label>Postcode or town</label><input type="text" id="adminBizPostcode-' + b.id + '" value="' + esc(b.postcode) + '" /></div>'
               + '<div class="account-field"><label>Phone</label><input type="text" id="adminBizPhone-' + b.id + '" value="' + esc(b.phone) + '" /></div>'
               + '<div class="account-field"><label>Website</label><input type="text" id="adminBizWebsite-' + b.id + '" value="' + esc(b.website) + '" placeholder="yourbusiness.co.uk" /></div>'
@@ -3078,7 +3089,7 @@
               + '<div id="adminBizEditStatus-' + b.id + '"></div>'
               + '</div>';
             return '<div class="review-row">'
-              + '<div class="review-row-top"><span><strong>' + b.name + '</strong> — ' + b.category + (b.postcode ? ' · ' + b.postcode : '') + '</span><span class="review-row-date">' + date + '</span></div>'
+              + '<div class="review-row-top"><span><strong>' + b.name + '</strong> — ' + b.category + (b.secondary_category ? ' + ' + b.secondary_category : '') + (b.postcode ? ' · ' + b.postcode : '') + '</span><span class="review-row-date">' + date + '</span></div>'
               + '<p class="review-row-comment">' + b.email + ' · ' + (b.subscription_status || 'free') + '</p>'
               + '<button class="btn-secondary" onclick="toggleAdminEditBusiness(\'' + b.id + '\')">Edit details</button> '
               + '<button class="btn-secondary" onclick="adminRemoveBusiness(\'' + b.id + '\')">Remove listing</button>'
@@ -3116,6 +3127,10 @@
         + '<option value="">Choose a category…</option>'
         + businessCategories.map((c) => '<option value="' + esc(c) + '">' + c + '</option>').join('')
         + '</select></div>'
+        + '<div class="account-field"><label>Also show under (optional)</label><select id="adminAddSecondaryCategory">'
+        + '<option value="">None</option>'
+        + businessCategories.map((c) => '<option value="' + esc(c) + '">' + c + '</option>').join('')
+        + '</select></div>'
         + '<div class="account-field"><label>Postcode or town</label><input type="text" id="adminAddPostcode" /></div>'
         + '<div class="account-field"><label>Contact email</label><input type="text" id="adminAddEmail" /></div>'
         + '<div class="account-field"><label>Phone</label><input type="text" id="adminAddPhone" /></div>'
@@ -3147,6 +3162,7 @@
       const payload = {
         name: document.getElementById('adminAddName').value.trim(),
         category: document.getElementById('adminAddCategory').value,
+        secondaryCategory: document.getElementById('adminAddSecondaryCategory').value,
         postcode: document.getElementById('adminAddPostcode').value.trim(),
         email: document.getElementById('adminAddEmail').value.trim(),
         phone: document.getElementById('adminAddPhone').value.trim(),
@@ -3172,6 +3188,7 @@
       const payload = {
         name: document.getElementById('adminBizName-' + id).value.trim(),
         category: document.getElementById('adminBizCategory-' + id).value,
+        secondaryCategory: document.getElementById('adminBizSecondaryCategory-' + id).value,
         postcode: document.getElementById('adminBizPostcode-' + id).value.trim(),
         phone: document.getElementById('adminBizPhone-' + id).value.trim(),
         website: document.getElementById('adminBizWebsite-' + id).value.trim(),
@@ -3211,6 +3228,7 @@
     async function saveBusinessListing() {
       const name = document.getElementById('bizName').value.trim();
       const category = document.getElementById('bizCategory').value.trim();
+      const secondaryCategory = document.getElementById('bizSecondaryCategory').value.trim();
       const postcode = document.getElementById('bizPostcode').value.trim();
       const description = document.getElementById('bizDescription').value.trim();
       const phone = document.getElementById('bizPhone').value.trim();
@@ -3231,7 +3249,7 @@
       try {
         await authedFetch('/api/business/listing', {
           method: 'PUT',
-          body: JSON.stringify({ name, category, postcode, description, phone, website, voucherTitle, voucherDescription, voucherExpiresAt }),
+          body: JSON.stringify({ name, category, secondaryCategory, postcode, description, phone, website, voucherTitle, voucherDescription, voucherExpiresAt }),
         });
         renderAccountPanel();
       } catch (err) {

@@ -217,7 +217,7 @@ function renderListingHtml(b) {
     ${logo}
     <div class="listing-body">
       <h3><a href="${businessPath(b)}">${escHtml(b.name)}</a>${featuredTag}</h3>
-      <div class="meta">${escHtml(b.category)}${b.town ? ' · ' + escHtml(b.town) : (b.postcode ? ' · ' + escHtml(b.postcode) : '')}</div>
+      <div class="meta">${escHtml(b.category)}${b.secondary_category ? ' + ' + escHtml(b.secondary_category) : ''}${b.town ? ' · ' + escHtml(b.town) : (b.postcode ? ' · ' + escHtml(b.postcode) : '')}</div>
       ${b.description ? `<p>${escHtml(b.description)}</p>` : ''}
     </div>
   </div>`;
@@ -245,8 +245,17 @@ router.get('/directory', async (req, res) => {
   try {
     let query = supabaseAdmin
       .from('businesses')
-      .select('id, name, category, description, postcode, town, logo_url, subscription_status');
-    if (category) query = query.eq('category', category);
+      .select('id, name, category, secondary_category, description, postcode, town, logo_url, subscription_status');
+    // Matches if the requested category is either the listing's primary OR
+    // secondary category (see businesses.secondary_category — a vineyard
+    // doing wine tastings is both "Food & Drink" and "Activities"). The
+    // value is wrapped in double quotes — PostgREST's own escaping for a
+    // value containing a comma ("Arts, Crafts & Gifts") — so it can't be
+    // mistaken for a second .or() condition.
+    if (category) {
+      const quoted = `"${category.replace(/"/g, '\\"')}"`;
+      query = query.or(`category.eq.${quoted},secondary_category.eq.${quoted}`);
+    }
 
     // Same word-by-word AND-across-words / OR-across-fields search pattern
     // used by the in-app directory API (routes/directory.js) — split into
@@ -311,6 +320,12 @@ router.get('/directory', async (req, res) => {
       const byCategory = {};
       for (const b of businesses) {
         (byCategory[b.category] = byCategory[b.category] || []).push(b);
+        // Also listed under its secondary category, if it has one — same
+        // "shows up under either" rule the category filter above applies,
+        // just for the unfiltered overview page's own grouping.
+        if (b.secondary_category) {
+          (byCategory[b.secondary_category] = byCategory[b.secondary_category] || []).push(b);
+        }
       }
       for (const c of BUSINESS_CATEGORIES) {
         if (!byCategory[c] || !byCategory[c].length) continue;
@@ -364,7 +379,7 @@ router.get('/directory/business/:id/:slug?', async (req, res) => {
   try {
     const { data: b, error } = await supabaseAdmin
       .from('businesses')
-      .select('id, name, category, description, phone, website, postcode, logo_url, subscription_status')
+      .select('id, name, category, secondary_category, description, phone, website, postcode, logo_url, subscription_status')
       .eq('id', req.params.id)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -397,7 +412,7 @@ router.get('/directory/business/:id/:slug?', async (req, res) => {
         ${logo}
         <div>
           <h1 style="margin-bottom:2px;">${escHtml(b.name)}${featuredTag}</h1>
-          <p class="lede" style="margin:0;">${escHtml(b.category)} in Cornwall${b.postcode ? ' · ' + escHtml(b.postcode) : ''}</p>
+          <p class="lede" style="margin:0;">${escHtml(b.category)}${b.secondary_category ? ' + ' + escHtml(b.secondary_category) : ''} in Cornwall${b.postcode ? ' · ' + escHtml(b.postcode) : ''}</p>
         </div>
       </div>
       ${b.description ? `<p>${escHtml(b.description)}</p>` : ''}
