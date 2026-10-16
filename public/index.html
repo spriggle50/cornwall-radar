@@ -109,6 +109,21 @@
       display: flex; align-items: center; justify-content: center; font-family: inherit; line-height: 1; padding: 0;
     }
     .alerts-promo-close:hover { background: rgba(255,255,255,0.32); }
+    .business-promo {
+      background: linear-gradient(135deg, #5c4200 0%, #9a6b00 55%, #c6900a 100%);
+      color: #fff; border-radius: var(--radius-lg); padding: 18px 20px 18px;
+      margin-bottom: 14px; box-shadow: var(--shadow-md); position: relative;
+    }
+    .business-promo h2 { margin: 0 0 7px; font-size: 1rem; font-weight: 800; display: flex; align-items: center; gap: 8px; padding-right: 26px; }
+    .business-promo p { margin: 0 0 13px; font-size: 0.84rem; opacity: 0.92; line-height: 1.5; }
+    .business-promo .btn-primary { background: #fff; color: #7a5600; }
+    .business-promo .btn-primary:hover { background: #fff2cc; }
+    .business-promo-close {
+      position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.18); border: none;
+      color: #fff; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; font-size: 0.8rem;
+      display: flex; align-items: center; justify-content: center; font-family: inherit; line-height: 1; padding: 0;
+    }
+    .business-promo-close:hover { background: rgba(255,255,255,0.32); }
     .weather-hero {
       border-radius: var(--radius-lg); padding: 24px 22px; margin-bottom: 16px;
       color: #fff; box-shadow: var(--shadow-md); position: relative; overflow: hidden;
@@ -700,6 +715,30 @@
       try { localStorage.setItem('cornwallRadarAlertsPromoDismissed', '1'); } catch (e) {}
       const el = document.getElementById('alertsPromoCard');
       if (el) el.innerHTML = '';
+    }
+
+    // Same idea as the alerts promo above, but for the OTHER subscription
+    // this app sells — a business's Featured listing — and placed inside
+    // the Business Directory / Activities detail panels themselves rather
+    // than the main dashboard, since that's where a business owner
+    // actually is when the pitch is most relevant. Embedded directly in
+    // renderDirectoryCard/renderActivitiesCard's own markup rather than a
+    // dedicated top-level div, so dismissal just removes this one element.
+    function businessPromoHtml() {
+      let dismissed = false;
+      try { dismissed = localStorage.getItem('cornwallRadarBusinessPromoDismissed') === '1'; } catch (e) {}
+      if (dismissed) return '';
+      return '<div class="business-promo" id="businessPromoBanner">'
+        + '<button class="business-promo-close" onclick="dismissBusinessPromo()" title="Dismiss" aria-label="Dismiss">✕</button>'
+        + '<h2>⭐ Get seen first — Featured for £4.99/month</h2>'
+        + '<p>Free listings are visible to everyone browsing this directory. A Featured listing sorts first, gets a ★ badge, and rotates through the homepage\'s Sponsored spot — less than other Cornwall business directories charge for a featured listing.</p>'
+        + '<button class="btn-primary" onclick="closeDetail(); openAccountPanel();">List your business →</button>'
+        + '</div>';
+    }
+
+    function dismissBusinessPromo() {
+      try { localStorage.setItem('cornwallRadarBusinessPromoDismissed', '1'); } catch (e) {}
+      document.getElementById('businessPromoBanner')?.remove();
     }
 
     const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1924,7 +1963,8 @@
         body = mapBlock + businesses.map(renderDirectoryRow).join('');
       }
 
-      return '<div class="card"><h2>🏪 Business Directory</h2>'
+      return businessPromoHtml()
+        + '<div class="card"><h2>🏪 Business Directory</h2>'
         + '<p class="section-subtitle">Local businesses across Cornwall — Featured listings appear first. '
         + '<a href="/directory" target="_blank" rel="noopener">Browse the full directory as a plain webpage →</a></p>'
         + searchBar
@@ -1932,7 +1972,7 @@
         + '</div>'
         + '<div class="card">'
         + '<h2>📋 Own a local business?</h2>'
-        + '<p class="account-note">Add your business for free, or upgrade to Featured for £4.99/month to show up first.</p>'
+        + '<p class="account-note">Add your business for free — see above to show up first with Featured.</p>'
         + '<button class="btn-primary" onclick="closeDetail(); openAccountPanel();">List your business</button>'
         + '</div>';
     }
@@ -2007,14 +2047,15 @@
         body = mapBlock + businesses.map(renderDirectoryRow).join('');
       }
 
-      return '<div class="card"><h2>🎡 Days Out & Activities</h2>'
+      return businessPromoHtml()
+        + '<div class="card"><h2>🎡 Days Out & Activities</h2>'
         + '<p class="section-subtitle">Places to visit and things to do across Cornwall — Featured listings appear first.</p>'
         + searchBar
         + body
         + '</div>'
         + '<div class="card">'
         + '<h2>📋 Run an attraction or activity?</h2>'
-        + '<p class="account-note">List it for free under "Attractions" or "Activities", and add a voucher too, from the account panel. Upgrade to Featured for £4.99/month to show up first.</p>'
+        + '<p class="account-note">List it for free under "Attractions" or "Activities", and add a voucher too, from the account panel — see above to show up first with Featured.</p>'
         + '<button class="btn-primary" onclick="closeDetail(); openAccountPanel();">List your business</button>'
         + '</div>';
     }
