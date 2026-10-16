@@ -164,7 +164,7 @@ ${bodyHtml}
 const LIST_BUSINESS_CTA = `
   <div class="cta-box">
     <strong>Own a business in Cornwall?</strong>
-    <p style="margin:6px 0 0; color:var(--text-2);">List it on Cornwall Radar for free — visible to everyone browsing this directory, with the option to upgrade to a Featured listing later.</p>
+    <p style="margin:6px 0 0; color:var(--text-2);">List it on Cornwall Radar for free — visible to everyone browsing this directory. Upgrade to a Featured listing for £4.99/month to show up first, get a star badge, and rotate through the homepage's Sponsored spot — less than other Cornwall business directories charge for the same thing.</p>
     <a class="btn" href="/?listBusiness=1">List your business free →</a>
   </div>`;
 

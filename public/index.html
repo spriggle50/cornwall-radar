@@ -1932,7 +1932,7 @@
         + '</div>'
         + '<div class="card">'
         + '<h2>📋 Own a local business?</h2>'
-        + '<p class="account-note">Add your business for free, or upgrade to Featured so you show up first.</p>'
+        + '<p class="account-note">Add your business for free, or upgrade to Featured for £4.99/month to show up first, get a ★ badge, and rotate through the homepage\'s Sponsored strip — less than other Cornwall business directories charge for the same thing.</p>'
         + '<button class="btn-primary" onclick="closeDetail(); openAccountPanel();">List your business</button>'
         + '</div>';
     }
@@ -2014,7 +2014,7 @@
         + '</div>'
         + '<div class="card">'
         + '<h2>📋 Run an attraction or activity?</h2>'
-        + '<p class="account-note">List it for free under "Attractions" or "Activities", and add a voucher too, from the account panel.</p>'
+        + '<p class="account-note">List it for free under "Attractions" or "Activities", and add a voucher too, from the account panel. Upgrade to Featured for £4.99/month to show up first — less than other Cornwall business directories charge.</p>'
         + '<button class="btn-primary" onclick="closeDetail(); openAccountPanel();">List your business</button>'
         + '</div>';
     }
@@ -2972,6 +2972,9 @@
         + '<input type="date" id="bizVoucherExpiresAt" value="' + esc(business && business.voucher_expires_at) + '" />'
         + '</div>'
         + logoBlock
+        + ((business && business.subscription_status !== 'active')
+          ? '<p class="account-note">Featured listings sort first in the directory and search, get a ★ badge, and rotate through the homepage\'s Sponsored strip — £4.99/month, less than other Cornwall business directories charge for the same thing.</p>'
+          : '')
         + '<button class="' + (business ? 'btn-secondary' : 'btn-primary') + '" onclick="saveBusinessListing()">' + (business ? 'Save changes' : 'Create listing') + '</button>'
         + (business ? ' ' + billingBtn + removeBtn : '')
         + '<div id="businessStatusMsg"></div>'
