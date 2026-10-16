@@ -94,6 +94,21 @@
     .card h2 { margin: 0 0 10px; font-size: 1.02rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
     .card h3 { margin: 0 0 6px; font-size: 0.88rem; font-weight: 700; color: var(--text-2); }
     .card .unavailable { color: var(--text-3); font-size: 0.9rem; }
+    .alerts-promo {
+      background: linear-gradient(135deg, #12283f 0%, #0d5b64 48%, #076b4a 100%);
+      color: #fff; border-radius: var(--radius-lg); padding: 18px 20px 18px;
+      margin-bottom: 14px; box-shadow: var(--shadow-md); position: relative;
+    }
+    .alerts-promo h2 { margin: 0 0 7px; font-size: 1rem; font-weight: 800; display: flex; align-items: center; gap: 8px; padding-right: 26px; }
+    .alerts-promo p { margin: 0 0 13px; font-size: 0.84rem; opacity: 0.92; line-height: 1.5; }
+    .alerts-promo .btn-primary { background: #fff; color: var(--accent-dark); }
+    .alerts-promo .btn-primary:hover { background: var(--accent-soft); }
+    .alerts-promo-close {
+      position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.18); border: none;
+      color: #fff; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; font-size: 0.8rem;
+      display: flex; align-items: center; justify-content: center; font-family: inherit; line-height: 1; padding: 0;
+    }
+    .alerts-promo-close:hover { background: rgba(255,255,255,0.32); }
     .weather-hero {
       border-radius: var(--radius-lg); padding: 24px 22px; margin-bottom: 16px;
       color: #fff; box-shadow: var(--shadow-md); position: relative; overflow: hidden;
@@ -505,6 +520,7 @@
   </div>
   <main id="app">
     <div id="weatherSummary"><div class="card"><p>Loading live Cornwall data…</p></div></div>
+    <div id="alertsPromoCard"></div>
     <div id="sponsoredStrip"></div>
     <div id="worldClockCard"></div>
     <div id="hubGrid" class="hub-grid"></div>
@@ -619,6 +635,7 @@
         document.getElementById('worldClockCard').innerHTML = renderWorldClockCard();
         startWorldClock();
         renderHubGrid();
+        renderAlertsPromo();
         loadSponsoredStrip();
         startSponsoredRotation();
       } catch (err) {
@@ -657,6 +674,32 @@
     function startSponsoredRotation() {
       if (sponsoredStripInterval) clearInterval(sponsoredStripInterval);
       sponsoredStripInterval = setInterval(loadSponsoredStrip, 60 * 1000);
+    }
+
+    // Most visitors never sign in, so most visitors never see the account
+    // panel's own "Subscribe" button (renderAccountCards, below) — this is
+    // the one place EVERYONE sees it, free or paid, signed in or not. Once
+    // dismissed it stays dismissed for that browser, the same best-effort
+    // localStorage pattern as the saved location, rather than nagging
+    // every visit.
+    function renderAlertsPromo() {
+      const el = document.getElementById('alertsPromoCard');
+      if (!el) return;
+      let dismissed = false;
+      try { dismissed = localStorage.getItem('cornwallRadarAlertsPromoDismissed') === '1'; } catch (e) {}
+      if (dismissed) { el.innerHTML = ''; return; }
+      el.innerHTML = '<div class="alerts-promo">'
+        + '<button class="alerts-promo-close" onclick="dismissAlertsPromo()" title="Dismiss" aria-label="Dismiss">✕</button>'
+        + '<h2>🔔 Get alerts for your saved spots — £2.49/month</h2>'
+        + '<p>Everything on this dashboard is free to browse. Subscribing adds a daily conditions email for any spot you save, plus live alerts for traffic delays on your route, severe weather warnings, and nearby wildlife sightings.</p>'
+        + '<button class="btn-primary" onclick="openAccountPanel()">Get started →</button>'
+        + '</div>';
+    }
+
+    function dismissAlertsPromo() {
+      try { localStorage.setItem('cornwallRadarAlertsPromoDismissed', '1'); } catch (e) {}
+      const el = document.getElementById('alertsPromoCard');
+      if (el) el.innerHTML = '';
     }
 
     const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -2448,6 +2491,7 @@
 
       const profileCard = '<div class="card"><h2>👤 ' + a.email
         + '<span class="account-status-badge ' + badgeClass + '">' + badgeLabel + '</span></h2>'
+        + (a.isPaid ? '' : '<p class="account-note">£2.49/month unlocks a daily conditions digest email, plus alerts for traffic delays on your route, severe weather warnings and nearby wildlife sightings — for any location you save below.</p>')
         + (a.isPaid
           ? '<button class="btn-secondary" onclick="openBillingPortal()">Manage billing</button>'
           : '<button class="btn-primary" onclick="startCheckout()">Subscribe — £2.49/month</button>')
