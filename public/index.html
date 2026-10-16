@@ -235,6 +235,7 @@
       border-radius: var(--radius-sm); margin-bottom: 14px; display: block;
     }
     #trafficMap { width: 100%; height: 340px; border-radius: var(--radius-sm); margin-bottom: 12px; background: #e5e7eb; }
+    #businessMap { width: 100%; height: 340px; border-radius: var(--radius-sm); margin-bottom: 12px; background: #e5e7eb; }
     .map-legend { font-size: 0.72rem; color: var(--text-3); margin: -6px 0 14px; }
     .tide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
     .tide-chip {
@@ -471,12 +472,14 @@
       #trafficMap { height: 480px; }
       #wildlifeMap { height: 420px; }
       #stormOverflowMap { height: 420px; }
+      #businessMap { height: 420px; }
     }
     @media (min-width: 1200px) {
       .location-wrap, main { max-width: 1140px; }
       #trafficMap { height: 560px; }
       #wildlifeMap { height: 480px; }
       #stormOverflowMap { height: 480px; }
+      #businessMap { height: 480px; }
     }
   </style>
 </head>
@@ -899,6 +902,7 @@
       if (trafficMapInstance) { trafficMapInstance.remove(); trafficMapInstance = null; }
       if (wildlifeMapInstance) { wildlifeMapInstance.remove(); wildlifeMapInstance = null; }
       if (stormOverflowMapInstance) { stormOverflowMapInstance.remove(); stormOverflowMapInstance = null; }
+      if (businessMapInstance) { businessMapInstance.remove(); businessMapInstance = null; }
       document.getElementById('detailPanel').hidden = true;
       document.getElementById('detailPanel').innerHTML = '';
       document.getElementById('hubGrid').hidden = false;
@@ -1047,6 +1051,69 @@
       wildlifeMapInstance.setView(marker.getLatLng(), 13, { animate: true });
       marker.openPopup();
       document.getElementById('wildlifeMap')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // Shared by the Business Directory, Food & Drink, Stay and Days Out &
+    // Activities detail panels — all four are really the same underlying
+    // /api/directory data, just pre-filtered to a category, so one map
+    // implementation covers all of them rather than four near-duplicates.
+    // Same OpenStreetMap-tile + circleMarker pattern as initWildlifeMap
+    // above. Colour-coded by category since the Activities page mixes two
+    // categories, and the plain Business Directory can show any of them.
+    let businessMapInstance = null;
+    let businessMapMarkers = [];
+
+    const BUSINESS_MAP_COLORS = {
+      'Food & Drink': '#c2410c',
+      'Accommodation': '#1d4ed8',
+      'Activities': '#15803d',
+      'Attractions': '#7c3aed',
+    };
+    function businessMapColor(category) {
+      return BUSINESS_MAP_COLORS[category] || '#076b4a';
+    }
+
+    function initBusinessMap(businesses) {
+      const mapEl = document.getElementById('businessMap');
+      if (!mapEl) return;
+      if (typeof L === 'undefined') {
+        mapEl.outerHTML = '<p class="unavailable">Map could not load (Leaflet failed to load from its CDN) — the list below is still live.</p>';
+        return;
+      }
+      if (businessMapInstance) { businessMapInstance.remove(); businessMapInstance = null; }
+
+      const located = (businesses || []).filter((b) => b.lat != null && b.lng != null);
+      if (!located.length) return;
+
+      const map = L.map('businessMap').setView([located[0].lat, located[0].lng], 10);
+      businessMapInstance = map;
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19,
+      }).addTo(map);
+
+      businessMapMarkers = located.map((b) => {
+        const siteUrl = normalizeWebsiteUrl(b.website);
+        const label = '<strong>' + b.name + '</strong><br>' + b.category
+          + (b.secondary_category ? ' + ' + b.secondary_category : '')
+          + (b.postcode ? '<br>' + b.postcode : '')
+          + (siteUrl ? '<br><a href="' + siteUrl + '" target="_blank" rel="noopener">Website</a>' : '');
+        const color = businessMapColor(b.category);
+        const marker = L.circleMarker([b.lat, b.lng], {
+          radius: 7, color, fillColor: color, fillOpacity: 0.85,
+        }).addTo(map).bindPopup(label);
+        marker.on('mouseover', () => marker.openPopup());
+        marker.on('mouseout', () => marker.closePopup());
+        return marker;
+      });
+
+      if (located.length > 1) {
+        const bounds = L.latLngBounds(located.map((b) => [b.lat, b.lng]));
+        map.fitBounds(bounds, { padding: [24, 24], maxZoom: 14 });
+      } else {
+        map.setView([located[0].lat, located[0].lng], 13);
+      }
     }
 
     function renderBusesDetail(b) {
@@ -1623,6 +1690,7 @@
       }
 
       panel.innerHTML = backBtn + renderDirectoryCard(data, categories);
+      initBusinessMap((data && data.businesses) || []);
       const input = document.getElementById('directorySearchInput');
       if (input && document.activeElement !== input) {
         input.focus();
@@ -1804,7 +1872,13 @@
       } else if (!businesses.length) {
         body = '<p class="account-note">No businesses listed yet' + (directoryFilters.q || directoryFilters.category ? ' matching that search.' : ' — be the first!') + '</p>';
       } else {
-        body = businesses.map(renderDirectoryRow).join('');
+        const located = businesses.filter((b) => b.lat != null && b.lng != null);
+        const mapBlock = located.length
+          ? '<div id="businessMap"></div><p class="map-legend">📍 tap a pin for details'
+            + (located.length < businesses.length ? ' · listings without a saved location only appear in the list below' : '')
+            + '</p>'
+          : '';
+        body = mapBlock + businesses.map(renderDirectoryRow).join('');
       }
 
       return '<div class="card"><h2>🏪 Business Directory</h2>'
@@ -1841,6 +1915,7 @@
       }
 
       panel.innerHTML = backBtn + renderActivitiesCard(data);
+      initBusinessMap((data && data.businesses) || []);
       const input = document.getElementById('activitiesSearchInput');
       if (input && document.activeElement !== input) {
         input.focus();
@@ -1880,7 +1955,13 @@
       } else if (!businesses.length) {
         body = '<p class="account-note">No days out or activities listed yet' + (activitiesFilters.q || activitiesFilters.category ? ' matching that search.' : ' — check back soon, or list one from the account panel!') + '</p>';
       } else {
-        body = businesses.map(renderDirectoryRow).join('');
+        const located = businesses.filter((b) => b.lat != null && b.lng != null);
+        const mapBlock = located.length
+          ? '<div id="businessMap"></div><p class="map-legend">📍 tap a pin for details'
+            + (located.length < businesses.length ? ' · listings without a saved location only appear in the list below' : '')
+            + '</p>'
+          : '';
+        body = mapBlock + businesses.map(renderDirectoryRow).join('');
       }
 
       return '<div class="card"><h2>🎡 Days Out & Activities</h2>'
