@@ -536,6 +536,7 @@
   <main id="app">
     <div id="weatherSummary"><div class="card"><p>Loading live Cornwall data…</p></div></div>
     <div id="alertsPromoCard"></div>
+    <div id="businessPromoCard"></div>
     <div id="sponsoredStrip"></div>
     <div id="worldClockCard"></div>
     <div id="hubGrid" class="hub-grid"></div>
@@ -651,6 +652,7 @@
         startWorldClock();
         renderHubGrid();
         renderAlertsPromo();
+        renderBusinessPromoCard();
         loadSponsoredStrip();
         startSponsoredRotation();
       } catch (err) {
@@ -739,6 +741,26 @@
     function dismissBusinessPromo() {
       try { localStorage.setItem('cornwallRadarBusinessPromoDismissed', '1'); } catch (e) {}
       document.getElementById('businessPromoBanner')?.remove();
+    }
+
+    function renderBusinessPromoCard() {
+      const el = document.getElementById('businessPromoCard');
+      if (!el) return;
+      let dismissed = false;
+      try { dismissed = localStorage.getItem('cornwallRadarBusinessPromoDismissed') === '1'; } catch (e) {}
+      if (dismissed) { el.innerHTML = ''; return; }
+      el.innerHTML = '<div class="business-promo">'
+        + '<button class="business-promo-close" onclick="dismissBusinessPromoCard()" title="Dismiss" aria-label="Dismiss">✕</button>'
+        + '<h2>🏪 Own a business in Cornwall?</h2>'
+        + '<p>Listing is free — your name, category, description, logo, contact details, vouchers and unlimited job vacancy postings, all at no cost, visible to everyone browsing. Upgrade to Featured for £4.99/month only if you want to show up first — that part\'s optional.</p>'
+        + '<button class="btn-primary" onclick="openAccountPanel()">List your business →</button>'
+        + '</div>';
+    }
+
+    function dismissBusinessPromoCard() {
+      try { localStorage.setItem('cornwallRadarBusinessPromoDismissed', '1'); } catch (e) {}
+      const el = document.getElementById('businessPromoCard');
+      if (el) el.innerHTML = '';
     }
 
     const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -946,6 +968,11 @@
       const panel = document.getElementById('detailPanel');
       panel.hidden = false;
 
+      const businessPromoEl = document.getElementById('businessPromoCard');
+      if (businessPromoEl) {
+        businessPromoEl.hidden = ['directory', 'foodDrink', 'stay', 'activities'].includes(key);
+      }
+
       if (key === 'directory') { directoryFilters.category = ''; renderDirectoryDetail(); return; }
       if (key === 'foodDrink') { directoryFilters.category = 'Food & Drink'; renderDirectoryDetail(); return; }
       if (key === 'stay') { directoryFilters.category = 'Accommodation'; renderDirectoryDetail(); return; }
@@ -988,6 +1015,8 @@
       document.getElementById('detailPanel').hidden = true;
       document.getElementById('detailPanel').innerHTML = '';
       document.getElementById('hubGrid').hidden = false;
+      const businessPromoEl = document.getElementById('businessPromoCard');
+      if (businessPromoEl) businessPromoEl.hidden = false;
     }
 
     function unavailableState(title, section) {
@@ -1972,7 +2001,7 @@
         + '</div>'
         + '<div class="card">'
         + '<h2>📋 Own a local business?</h2>'
-        + '<p class="account-note">Add your business for free — see above to show up first with Featured.</p>'
+        + '<p class="account-note">Listing is completely free — your name, category, description, logo, contact details and vouchers, visible to everyone browsing this directory, plus unlimited free job vacancy postings. Featured (above) is an optional paid upgrade, not a requirement to be listed.</p>'
         + '<button class="btn-primary" onclick="closeDetail(); openAccountPanel();">List your business</button>'
         + '</div>';
     }
@@ -2055,7 +2084,7 @@
         + '</div>'
         + '<div class="card">'
         + '<h2>📋 Run an attraction or activity?</h2>'
-        + '<p class="account-note">List it for free under "Attractions" or "Activities", and add a voucher too, from the account panel — see above to show up first with Featured.</p>'
+        + '<p class="account-note">Listing under "Attractions" or "Activities" is completely free — add a description, logo and vouchers, visible to everyone, plus unlimited free job vacancy postings. Featured (above) is an optional paid upgrade, not a requirement to be listed.</p>'
         + '<button class="btn-primary" onclick="closeDetail(); openAccountPanel();">List your business</button>'
         + '</div>';
     }
