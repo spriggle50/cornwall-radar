@@ -302,6 +302,13 @@ router.get('/directory', async (req, res) => {
       : category
         ? `Every ${escHtml(category)} business listed free on Cornwall Radar's Cornwall business directory, in one place.`
         : `A free, growing directory of local businesses across Cornwall — from trades and cafes to days out and professional services. No charge to list, ever.`}</p>`;
+    // A short, genuinely descriptive paragraph rather than just the one-line
+    // lede above — gives this page more unique on-topic text to match
+    // against searches like "cornwall business directory", and names real
+    // towns/categories rather than repeating the same few keywords.
+    if (!searching && !category) {
+      body += `<p>Covering towns across Cornwall — Truro, Falmouth, St Austell, Newquay, Penzance, Bodmin, Camborne, Redruth, Bude and more — this directory lists local businesses by category: trades, food and drink, shops, days out and attractions, places to stay, and professional services. Every listing is free, with an optional Featured upgrade for businesses that want to show up first. Browse by category below, or search by business name, type of business, or town.</p>`;
+    }
     body += searchFormHtml(category, q);
     body += LIST_BUSINESS_CTA;
     body += categoryNav(category, q);
