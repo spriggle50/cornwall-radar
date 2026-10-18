@@ -393,6 +393,15 @@ router.get('/directory/business/:id/:slug?', async (req, res) => {
       }));
     }
 
+    const { data: reviewRows } = await supabaseAdmin
+      .from('business_reviews')
+      .select('rating')
+      .eq('business_id', b.id);
+    const reviewCount = (reviewRows || []).length;
+    const avgRating = reviewCount
+      ? Math.round((reviewRows.reduce((sum, r) => sum + r.rating, 0) / reviewCount) * 10) / 10
+      : null;
+
     const title = `${b.name} — ${b.category} in Cornwall | Cornwall Radar`;
     const description = b.description
       ? `${b.name}: ${b.description}`.slice(0, 300)
@@ -413,6 +422,7 @@ router.get('/directory/business/:id/:slug?', async (req, res) => {
         <div>
           <h1 style="margin-bottom:2px;">${escHtml(b.name)}${featuredTag}</h1>
           <p class="lede" style="margin:0;">${escHtml(b.category)}${b.secondary_category ? ' + ' + escHtml(b.secondary_category) : ''} in Cornwall${b.postcode ? ' · ' + escHtml(b.postcode) : ''}</p>
+          ${reviewCount ? `<p style="margin:4px 0 0; color:var(--text-2);">★ ${avgRating} · ${reviewCount} ${reviewCount === 1 ? 'review' : 'reviews'}</p>` : ''}
         </div>
       </div>
       ${b.description ? `<p>${escHtml(b.description)}</p>` : ''}
@@ -437,6 +447,15 @@ router.get('/directory/business/:id/:slug?', async (req, res) => {
         postalCode: b.postcode || undefined,
         addressCountry: 'GB',
       },
+      ...(reviewCount ? {
+        aggregateRating: {
+          '@type': 'AggregateRating',
+          ratingValue: avgRating,
+          reviewCount,
+          bestRating: 5,
+          worstRating: 1,
+        },
+      } : {}),
     };
 
     res.set('Cache-Control', 'public, max-age=300');
