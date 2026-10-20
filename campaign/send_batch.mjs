@@ -104,6 +104,23 @@ function renderEmail({ business_name, campaign_group }) {
   return { subject, html, text };
 }
 
+// Every email address that's ever been marked 'unsubscribed', anywhere in
+// the table — not just whichever row id got flagged. A lead's status lives
+// on one specific row, but the same email can end up in more than one row
+// (a later re-scrape under a slightly different business name, a stray
+// duplicate from before a dedupe pass existed), and a fresh row like that
+// would otherwise sit there as status='pending' and get emailed again
+// despite the opt-out. Checked against every batch this script sends,
+// regardless of which row's id ends up matching.
+async function unsubscribedEmails() {
+  const { data, error } = await supabase
+    .from("leads")
+    .select("email")
+    .eq("status", "unsubscribed");
+  if (error) throw error;
+  return new Set((data || []).map((row) => row.email.trim().toLowerCase()));
+}
+
 async function nextGroupWithPending() {
   if (GROUP_FILTER) return GROUP_FILTER;
   for (const group of GROUP_ORDER) {
@@ -125,15 +142,34 @@ async function main() {
     return;
   }
 
-  const { data: leads, error } = await supabase
+  const unsubscribed = await unsubscribedEmails();
+
+  // Fetched without a DB-side limit and sliced down to LIMIT after
+  // filtering — this project's scale (a few hundred pending rows per group
+  // at most) makes that cheap, and it means a run never comes up short of
+  // LIMIT just because a few of the oldest pending rows happened to share
+  // an email with an unsubscribed one.
+  const { data: candidateLeads, error } = await supabase
     .from("leads")
     .select("id, business_name, email, campaign_group")
     .eq("campaign_group", group)
     .eq("status", "pending")
-    .order("id", { ascending: true })
-    .limit(LIMIT);
+    .order("id", { ascending: true });
 
   if (error) throw error;
+
+  const skippedUnsubscribed = (candidateLeads || []).filter((lead) => unsubscribed.has(lead.email.trim().toLowerCase()));
+  if (skippedUnsubscribed.length) {
+    console.log(`Skipping ${skippedUnsubscribed.length} pending row(s) whose email is already unsubscribed:`);
+    for (const lead of skippedUnsubscribed) {
+      console.log(`  skip (unsubscribed)  ${lead.business_name} <${lead.email}> (id ${lead.id})`);
+    }
+  }
+
+  const leads = (candidateLeads || [])
+    .filter((lead) => !unsubscribed.has(lead.email.trim().toLowerCase()))
+    .slice(0, LIMIT);
+
   if (!leads.length) {
     console.log(`No pending leads found for group "${group}".`);
     return;
