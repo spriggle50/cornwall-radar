@@ -14,8 +14,23 @@ const { requireAdmin } = require('../middleware/requireAdmin');
 const { geocodeLocation } = require('../fetchers/geocode');
 const { nearestTown } = require('../lib/cornwallTowns');
 const { BUSINESS_CATEGORIES } = require('../lib/businessCategories');
+const multer = require('multer');
 
 router.use(requireAuth, requireAdmin);
+
+// Same upload config as business.js's own POST /logo (see that file's
+// comment for why memory storage + a 2MB cap) — duplicated rather than
+// imported, matching this project's habit of keeping a few lines of
+// route-local logic local. This lets Ady upload a logo on a business's
+// behalf when it arrived by email instead of through their own dashboard
+// (see POST /businesses/:id/logo below) — logo is otherwise an owner-only
+// edit, same as description/vacancies, but a business added via POST
+// /businesses above has no reason to ever sign in and do that themselves.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+});
+const ALLOWED_LOGO_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 
 // Same tiny helper as business.js's own listing-save route — duplicated
 // rather than imported, matching this project's habit of keeping a few
@@ -64,7 +79,7 @@ router.get('/businesses', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('businesses')
-      .select('id, name, category, secondary_category, postcode, town, email, phone, website, subscription_status, voucher_title, voucher_description, voucher_expires_at, created_at')
+      .select('id, name, category, secondary_category, postcode, town, email, phone, website, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at, created_at')
       .order('created_at', { ascending: false });
     if (error) throw new Error(error.message);
     res.json({ businesses: data || [] });
@@ -192,14 +207,16 @@ router.post('/businesses', async (req, res) => {
 // details on their behalf (a mistyped website was the original case this
 // was built for) without the owner needing to sign in and do it themselves.
 // Covers name, category, secondary category, phone, website, postcode, the
-// account's contact email, and the voucher — NOT logo/description/
-// vacancies, which stay owner-only edits via routes/business.js so a
-// business's own richer content is never silently touched by anyone but
-// them. The voucher's the one exception: added so Ady can set one for a
-// business that has no reason to ever sign in and do it themselves (see
-// POST above). `email` here is businesses.email — the contact address
-// shown in this admin list — NOT the owner's actual Supabase Auth sign-in,
-// which can't be (and doesn't need to be) changed from here.
+// account's contact email, and the voucher — NOT description or vacancies,
+// which stay owner-only edits via routes/business.js so a business's own
+// richer content is never silently touched by anyone but them. The voucher
+// and the logo (POST /businesses/:id/logo below) are the two exceptions:
+// added so Ady can set them for a business that has no reason to ever sign
+// in and do it themselves (see POST above) — logos in particular because
+// businesses that reply to outreach by email tend to just attach one and
+// ask for it to be added. `email` here is businesses.email — the contact
+// address shown in this admin list — NOT the owner's actual Supabase Auth
+// sign-in, which can't be (and doesn't need to be) changed from here.
 router.put('/businesses/:id', async (req, res) => {
   const { name, category, secondaryCategory, phone, website, email, postcode, voucherTitle, voucherDescription, voucherExpiresAt } = req.body || {};
   if (!name || !name.trim() || !postcode || !postcode.trim()) {
@@ -255,6 +272,57 @@ router.put('/businesses/:id', async (req, res) => {
     res.json(data);
   } catch (err) {
     res.status(400).json({ error: err.message || 'Could not save changes — check the postcode/town is valid' });
+  }
+});
+
+// POST /api/admin/businesses/:id/logo — upload/replace a logo on a
+// business's behalf. Same storage bucket, path convention (fixed filename
+// + upsert so a re-upload replaces rather than accumulates) and
+// cache-busted public URL as business.js's own POST /logo — the only
+// difference is whose id the path and the `businesses` row update use.
+// businesses.id is always a real auth user id (see POST /businesses
+// above), so this works identically whether the business ever signs in or
+// not.
+router.post('/businesses/:id/logo', upload.single('logo'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded (field name must be "logo")' });
+  }
+  const ext = ALLOWED_LOGO_TYPES[req.file.mimetype];
+  if (!ext) {
+    return res.status(400).json({ error: 'Logo must be a PNG, JPEG or WebP image' });
+  }
+
+  try {
+    const { data: business } = await supabaseAdmin
+      .from('businesses')
+      .select('id')
+      .eq('id', req.params.id)
+      .maybeSingle();
+    if (!business) {
+      return res.status(404).json({ error: 'No listing found for that business' });
+    }
+
+    const path = `${req.params.id}/logo.${ext}`;
+    const { error: uploadErr } = await supabaseAdmin.storage
+      .from('business-logos')
+      .upload(path, req.file.buffer, { contentType: req.file.mimetype, upsert: true });
+    if (uploadErr) throw new Error(uploadErr.message);
+
+    const { data: publicUrlData } = supabaseAdmin.storage.from('business-logos').getPublicUrl(path);
+    const logoUrl = publicUrlData.publicUrl + '?v=' + Date.now();
+
+    const { data, error } = await supabaseAdmin
+      .from('businesses')
+      .update({ logo_url: logoUrl })
+      .eq('id', req.params.id)
+      .select('id, logo_url')
+      .single();
+    if (error) throw new Error(error.message);
+
+    res.json(data);
+  } catch (err) {
+    console.error('[admin] logo upload failed:', err.message);
+    res.status(500).json({ error: err.message || 'Could not upload logo' });
   }
 });
 

@@ -3280,6 +3280,13 @@
               + '<div class="account-field"><label>Postcode or town</label><input type="text" id="adminBizPostcode-' + b.id + '" value="' + esc(b.postcode) + '" /></div>'
               + '<div class="account-field"><label>Phone</label><input type="text" id="adminBizPhone-' + b.id + '" value="' + esc(b.phone) + '" /></div>'
               + '<div class="account-field"><label>Website</label><input type="text" id="adminBizWebsite-' + b.id + '" value="' + esc(b.website) + '" placeholder="yourbusiness.co.uk" /></div>'
+              + '<div class="account-field"><label>Logo (optional)</label>'
+              + '<p class="account-note">Square image works best, e.g. 512×512px. PNG, JPEG or WebP, up to 2MB — for when a business emails you a logo to add on their behalf.</p>'
+              + (b.logo_url ? '<img src="' + b.logo_url + '" alt="" style="display:block; width:64px; height:64px; object-fit:contain; background:#fff; border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:8px; box-sizing:border-box; padding:4px;" />' : '')
+              + '<input type="file" id="adminBizLogoFile-' + b.id + '" accept="image/png,image/jpeg,image/webp" />'
+              + '<button class="btn-secondary" style="margin-top:8px;" onclick="uploadAdminBusinessLogo(\'' + b.id + '\')">' + (b.logo_url ? 'Replace logo' : 'Upload logo') + '</button>'
+              + '<div id="adminBizLogoStatus-' + b.id + '"></div>'
+              + '</div>'
               + '<div class="account-field"><label>Contact email</label><input type="text" id="adminBizEmail-' + b.id + '" value="' + esc(b.email) + '" />'
               + '<p class="account-note">This is just the contact address shown here — it doesn\'t change the owner\'s actual sign-in.</p></div>'
               + '<div class="account-field"><label>Voucher / offer (optional)</label>'
@@ -3415,6 +3422,24 @@
       if (status) status.innerHTML = '<p class="account-note">Saving…</p>';
       try {
         await authedFetch('/api/admin/businesses/' + id, { method: 'PUT', body: JSON.stringify(payload) });
+        renderAccountPanel();
+      } catch (err) {
+        if (status) status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
+    }
+
+    async function uploadAdminBusinessLogo(id) {
+      const fileInput = document.getElementById('adminBizLogoFile-' + id);
+      const status = document.getElementById('adminBizLogoStatus-' + id);
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) { if (status) status.innerHTML = '<p class="account-error">Choose an image file first</p>'; return; }
+      if (file.size > 2 * 1024 * 1024) { if (status) status.innerHTML = '<p class="account-error">Logo must be under 2MB</p>'; return; }
+
+      if (status) status.innerHTML = '<p class="account-note">Uploading…</p>';
+      try {
+        const formData = new FormData();
+        formData.append('logo', file);
+        await authedUpload('/api/admin/businesses/' + id + '/logo', formData);
         renderAccountPanel();
       } catch (err) {
         if (status) status.innerHTML = '<p class="account-error">' + err.message + '</p>';
