@@ -11,6 +11,7 @@ const directoryRoute = require('./routes/directory');
 const reviewsRoute = require('./routes/reviews');
 const adminRoute = require('./routes/admin');
 const alertsRoute = require('./routes/alerts');
+const campaignUnsubscribeRoute = require('./routes/campaignUnsubscribe');
 const seoPagesRoute = require('./routes/seoPages');
 const resendWebhook = require('./routes/resendWebhook');
 const { geocodeLocation } = require('./fetchers/geocode');
@@ -62,6 +63,10 @@ app.use('/api/admin', adminRoute);
 // Alert preferences (morning digest, traffic, weather, wildlife) — actually
 // sending them happens in the two cron-triggered jobs below, not here.
 app.use('/api/alerts', alertsRoute);
+// Public one-click unsubscribe link for the outreach campaign
+// (campaign/send_batch.mjs) — no auth, matched purely by each lead's own
+// token. See routes/campaignUnsubscribe.js's own top comment.
+app.use('/api/campaign', campaignUnsubscribeRoute);
 // Server-rendered, JS-free SEO pages (/directory, /directory/business/:id/:slug,
 // /sitemap.xml) — a second, plain-HTML front door onto the same businesses
 // table the API routes above serve to the app itself. See routes/seoPages.js's

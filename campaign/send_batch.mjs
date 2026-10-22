@@ -28,6 +28,11 @@ const FROM_ADDRESS = process.env.FROM_ADDRESS || "Cornwall Radar <hello@mail.cor
 // mail.cornwallradar.co.uk has no inbox set up to receive them.
 const REPLY_TO_ADDRESS = process.env.REPLY_TO_ADDRESS || "hello@cornwallradar.co.uk";
 const UNSUBSCRIBE_ADDRESS = process.env.UNSUBSCRIBE_ADDRESS || "unsubscribe@cornwallradar.co.uk";
+// Base URL for the one-click unsubscribe link below (see
+// src/routes/campaignUnsubscribe.js) — defaults to the real production
+// site rather than localhost, since this script's whole job is sending
+// real outreach email, never a local dev send.
+const APP_BASE_URL = process.env.APP_BASE_URL || "https://www.cornwallradar.co.uk";
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !RESEND_API_KEY) {
   console.error("Set SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and RESEND_API_KEY first.");
@@ -65,13 +70,19 @@ const resend = new Resend(RESEND_API_KEY);
 
 const benefitCopy = JSON.parse(readFileSync("./benefit_copy.json", "utf-8"));
 
-function renderEmail({ business_name, campaign_group }) {
+function renderEmail({ business_name, campaign_group, unsubscribe_token }) {
   const copy = benefitCopy[campaign_group];
   if (!copy) {
     throw new Error(`No benefit copy defined for campaign_group "${campaign_group}"`);
   }
   const subject = copy.subject.replaceAll("{{business_name}}", business_name);
   const body = copy.body.replaceAll("{{business_name}}", business_name);
+  // Falls back to the old mailto-only instruction for any lead that
+  // somehow still has no token (e.g. the backfill script hasn't been run
+  // against this row yet) — never blocks a send over a missing token.
+  const unsubscribeUrl = unsubscribe_token
+    ? `${APP_BASE_URL}/api/campaign/unsubscribe/${unsubscribe_token}`
+    : null;
 
   const html = `
     <div style="font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #1a1a1a; line-height: 1.5;">
@@ -93,13 +104,15 @@ function renderEmail({ business_name, campaign_group }) {
       <p style="font-size: 12px; color: #777; margin-top: 32px;">
         You're receiving this because ${business_name}'s contact details are listed online
         and available to the public. If you'd rather not hear from us again,
-        just reply "no thanks" or email
-        <a href="mailto:${UNSUBSCRIBE_ADDRESS}">${UNSUBSCRIBE_ADDRESS}</a> and we won't contact you again.
+        ${unsubscribeUrl ? `<a href="${unsubscribeUrl}">click here to unsubscribe</a>` : `just reply "no thanks" or email <a href="mailto:${UNSUBSCRIBE_ADDRESS}">${UNSUBSCRIBE_ADDRESS}</a>`} and we won't contact you again.
       </p>
     </div>
   `.trim();
 
-  const text = `Hi there,\n\n${body}\n\nIt costs nothing to list ${business_name} — no commission, no catch, no auto-renewal trap. Just reply to this email and we'll get you added, or if you'd rather do it yourself, head to https://www.cornwallradar.co.uk/directory and click "List your business free" (you'll need to set up a free account first).\n\nOther benefits of creating a free account:\n- Add vouchers for visitors — these show on our vouchers card on the homepage\n- List any jobs you're advertising in our local jobs section\n\nAll part of the same free listing, no extra cost.\n\nAll the best,\nYour Cornwall Radar Little Helpers\n\n---\nYou're receiving this because ${business_name}'s contact details are listed online and available to the public. If you'd rather not hear from us again, just reply "no thanks" or email ${UNSUBSCRIBE_ADDRESS} and we won't contact you again.`;
+  const unsubscribeText = unsubscribeUrl
+    ? `unsubscribe here: ${unsubscribeUrl}`
+    : `reply "no thanks" or email ${UNSUBSCRIBE_ADDRESS}`;
+  const text = `Hi there,\n\n${body}\n\nIt costs nothing to list ${business_name} — no commission, no catch, no auto-renewal trap. Just reply to this email and we'll get you added, or if you'd rather do it yourself, head to https://www.cornwallradar.co.uk/directory and click "List your business free" (you'll need to set up a free account first).\n\nOther benefits of creating a free account:\n- Add vouchers for visitors — these show on our vouchers card on the homepage\n- List any jobs you're advertising in our local jobs section\n\nAll part of the same free listing, no extra cost.\n\nAll the best,\nYour Cornwall Radar Little Helpers\n\n---\nYou're receiving this because ${business_name}'s contact details are listed online and available to the public. If you'd rather not hear from us again, ${unsubscribeText} and we won't contact you again.`;
 
   return { subject, html, text };
 }
@@ -151,7 +164,7 @@ async function main() {
   // an email with an unsubscribed one.
   const { data: candidateLeads, error } = await supabase
     .from("leads")
-    .select("id, business_name, email, campaign_group")
+    .select("id, business_name, email, campaign_group, unsubscribe_token")
     .eq("campaign_group", group)
     .eq("status", "pending")
     .order("id", { ascending: true });
