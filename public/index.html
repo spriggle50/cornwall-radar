@@ -235,6 +235,13 @@
     .flood-warning-title { font-weight: 700; }
     .flood-warning-desc { margin-top: 2px; }
     .flood-warning-message { margin-top: 4px; font-size: 0.8rem; color: var(--text-2); }
+    .storm-warning-banner { border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 10px; font-size: 0.88rem; }
+    .storm-warning-banner.level-yellow { background: #fef3c7; color: #78350f; }
+    .storm-warning-banner.level-amber { background: #fed7aa; color: #7c2d12; }
+    .storm-warning-banner.level-red { background: #fee2e2; color: #7f1d1d; }
+    .storm-warning-title { font-weight: 700; }
+    .storm-warning-desc { margin-top: 2px; }
+    .storm-warning-meta { margin-top: 4px; font-size: 0.78rem; opacity: 0.85; }
     .level-row { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--border); font-size: 0.88rem; }
     .level-row:first-child { border-top: none; padding-top: 2px; }
     .level-label { font-weight: 600; }
@@ -647,7 +654,7 @@
         }
         const res = await fetch('/api/dashboard' + (params.toString() ? '?' + params.toString() : ''));
         dashboardData = await res.json();
-        document.getElementById('weatherSummary').innerHTML = renderWeather(dashboardData.weather);
+        document.getElementById('weatherSummary').innerHTML = renderWeather(dashboardData.weather, dashboardData.weatherWarnings);
         document.getElementById('worldClockCard').innerHTML = renderWorldClockCard();
         startWorldClock();
         renderHubGrid();
@@ -786,10 +793,27 @@
       return { label: 'Extreme', cls: 'uv-extreme' };
     }
 
-    function renderWeather(w) {
+    function renderStormWarningsBanner(warningsData) {
+      if (!warningsData || warningsData.unavailable || warningsData.configured === false) return '';
+      const warnings = warningsData.warnings || [];
+      if (!warnings.length) return '';
+      return warnings.map(function (warn) {
+        const levelClass = 'level-' + String(warn.level || '').toLowerCase();
+        const types = (warn.types || []).join(', ');
+        const until = warn.validTo ? new Date(warn.validTo).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+        return '<div class="storm-warning-banner ' + levelClass + '">'
+          + '<div class="storm-warning-title">' + (warn.levelEmoji || '⚠️') + ' ' + (warn.level || 'Warning') + (types ? ' — ' + types : '') + '</div>'
+          + (warn.headline ? '<div class="storm-warning-desc">' + warn.headline + '</div>' : '')
+          + (until ? '<div class="storm-warning-meta">Met Office warning, in force until ' + until + '</div>' : '<div class="storm-warning-meta">Met Office warning</div>')
+          + '</div>';
+      }).join('');
+    }
+
+    function renderWeather(w, warningsData) {
       if (!w || w.unavailable) {
         return '<div class="card"><h2>🌦️ Weather</h2><p class="unavailable">Unavailable right now (' + (w?.error || 'unknown error') + ')</p></div>';
       }
+      const warningsBanner = renderStormWarningsBanner(warningsData);
       const c = w.current;
       const cls = heroConditionClass(c.code, c.isDay);
       const uv = uvLevel(c.uvIndexMax);
@@ -812,6 +836,7 @@
       }).join('');
 
       return '<div class="weather-hero ' + cls + '">'
+        + warningsBanner
         + '<div class="weather-hero-top">'
         + '<div class="weather-main">'
         + '<span class="weather-emoji">' + c.emoji + '</span>'

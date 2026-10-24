@@ -17,6 +17,7 @@ const { getTrainDepartures } = require('../fetchers/trains');
 const { getStormOverflows } = require('../fetchers/stormOverflows');
 const { getFloodAndRiverLevels } = require('../fetchers/floodMonitoring');
 const { getBathingWaterQuality } = require('../fetchers/bathingWater');
+const { getWeatherWarnings } = require('../fetchers/weatherWarnings');
 const { getOrFetch, TTL_MS } = require('../lib/dashboardCache');
 
 // Same default as weather.js — Truro, Cornwall — used whenever no location
@@ -41,8 +42,9 @@ router.get('/', async (req, res) => {
   const effectiveLon = lon != null ? lon : DEFAULT_LON;
 
   const buildDashboard = async () => {
-    const [weather, wildlife, news, traffic, buses, tides, pollen, weatherDetail, whatson, events, sport, councilNews, trains, stormOverflows, floodMonitoring, bathingWater] = await Promise.allSettled([
+    const [weather, weatherWarnings, wildlife, news, traffic, buses, tides, pollen, weatherDetail, whatson, events, sport, councilNews, trains, stormOverflows, floodMonitoring, bathingWater] = await Promise.allSettled([
       getWeather(lat, lon),
+      getWeatherWarnings(),
       getRecentSightings(),
       getNews(),
       getTrafficIncidents({ lat, lon }),
@@ -74,6 +76,7 @@ router.get('/', async (req, res) => {
 
     return {
       weather: unwrap(weather, 'weather'),
+      weatherWarnings: unwrap(weatherWarnings, 'weatherWarnings'),
       wildlife: unwrap(wildlife, 'wildlife'),
       news: unwrap(news, 'news'),
       traffic: unwrap(traffic, 'traffic'),
