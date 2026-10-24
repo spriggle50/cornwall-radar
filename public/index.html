@@ -239,6 +239,7 @@
     .storm-warning-banner.level-yellow { background: #fef3c7; color: #78350f; }
     .storm-warning-banner.level-amber { background: #fed7aa; color: #7c2d12; }
     .storm-warning-banner.level-red { background: #fee2e2; color: #7f1d1d; }
+    .storm-warning-stormname { font-weight: 800; font-size: 1.1rem; }
     .storm-warning-title { font-weight: 700; }
     .storm-warning-desc { margin-top: 2px; }
     .storm-warning-meta { margin-top: 4px; font-size: 0.78rem; opacity: 0.85; }
@@ -801,8 +802,13 @@
         const levelClass = 'level-' + String(warn.level || '').toLowerCase();
         const types = (warn.types || []).join(', ');
         const until = warn.validTo ? new Date(warn.validTo).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+        const levelLine = (warn.level || 'Warning') + (types ? ' — ' + types + ' warning' : ' warning');
+        const titleHtml = warn.stormName
+          ? '<div class="storm-warning-stormname">' + (warn.levelEmoji || '⚠️') + ' Storm ' + warn.stormName + '</div>'
+            + '<div class="storm-warning-title">' + levelLine + '</div>'
+          : '<div class="storm-warning-title">' + (warn.levelEmoji || '⚠️') + ' ' + levelLine + '</div>';
         return '<div class="storm-warning-banner ' + levelClass + '">'
-          + '<div class="storm-warning-title">' + (warn.levelEmoji || '⚠️') + ' ' + (warn.level || 'Warning') + (types ? ' — ' + types : '') + '</div>'
+          + titleHtml
           + (warn.headline ? '<div class="storm-warning-desc">' + warn.headline + '</div>' : '')
           + (until ? '<div class="storm-warning-meta">Met Office warning, in force until ' + until + '</div>' : '<div class="storm-warning-meta">Met Office warning</div>')
           + '</div>';

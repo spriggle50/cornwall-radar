@@ -56,6 +56,22 @@ function extractRelatedHref(atomXml) {
 const LEVEL_RANK = { RED: 3, AMBER: 2, YELLOW: 1 };
 const LEVEL_EMOJI = { RED: '🔴', AMBER: '🟠', YELLOW: '🟡' };
 
+// The Met Office doesn't expose a separate "storm name" field anywhere in
+// this API — confirmed against their live docs, only one example
+// response, no formal schema listed ("Schema not found"). When a warning
+// belongs to a named storm (e.g. "Storm Bert"), the name is just written
+// into the headline/further-details text itself, so that's pulled out
+// with a regex instead. Returns null for the (more common) unnamed
+// warnings, which is fine — the banner just falls back to the plain
+// level/type wording.
+const STORM_NAME_RE = /\bStorm\s+([A-Z][a-zA-Z'’-]+)\b/;
+
+function extractStormName(properties) {
+  const text = [properties.warningHeadline, properties.warningFurtherDetails].filter(Boolean).join(' ');
+  const match = text.match(STORM_NAME_RE);
+  return match ? match[1] : null;
+}
+
 async function getWeatherWarnings() {
   if (!isConfigured()) {
     return { configured: false, message: 'METOFFICE_DATAHUB_API_KEY not set — add it to .env (datahub.metoffice.gov.uk)', warnings: [] };
@@ -97,6 +113,7 @@ async function getWeatherWarnings() {
       id: p.warningId,
       level: p.warningLevel,
       levelEmoji: LEVEL_EMOJI[p.warningLevel] || '⚠️',
+      stormName: extractStormName(p),
       types: p.weatherType || [],
       headline: p.warningHeadline,
       whatToExpect: p.whatToExpect || [],
