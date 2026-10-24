@@ -1214,8 +1214,18 @@
         const marker = L.circleMarker([b.lat, b.lng], {
           radius: 7, color, fillColor: color, fillOpacity: 0.85,
         }).addTo(map).bindPopup(label);
-        marker.on('mouseover', () => marker.openPopup());
-        marker.on('mouseout', () => marker.closePopup());
+        let closeTimer = null;
+        const cancelClose = () => { if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; } };
+        const scheduleClose = () => { cancelClose(); closeTimer = setTimeout(() => marker.closePopup(), 250); };
+        marker.on('mouseover', () => { cancelClose(); marker.openPopup(); });
+        marker.on('mouseout', scheduleClose);
+        marker.on('popupopen', (e) => {
+          const el = e.popup.getElement();
+          if (el) {
+            el.addEventListener('mouseenter', cancelClose);
+            el.addEventListener('mouseleave', scheduleClose);
+          }
+        });
         return marker;
       });
 
