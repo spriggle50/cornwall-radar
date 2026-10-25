@@ -154,21 +154,6 @@
     .weather-stat-value { font-size: 1rem; font-weight: 700; margin-top: 2px; }
     .uv-low { color: #d7ffe6; } .uv-moderate { color: #fff5c2; } .uv-high { color: #ffd8a8; }
     .uv-veryhigh { color: #ffb4a8; } .uv-extreme { color: #ffb4f0; }
-    .weather-forecast-strip {
-      display: flex; gap: 8px; margin-top: 16px; padding-top: 14px;
-      border-top: 1px solid rgba(255,255,255,0.22);
-      overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
-    }
-    .weather-forecast-strip::-webkit-scrollbar { display: none; }
-    .weather-forecast-day {
-      flex: 0 0 60px; text-align: center; background: rgba(255,255,255,0.1); border-radius: var(--radius-sm);
-      padding: 9px 4px;
-    }
-    .weather-forecast-day-name { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; opacity: 0.85; }
-    .weather-forecast-day-emoji { font-size: 1.35rem; margin: 4px 0 2px; }
-    .weather-forecast-day-temps { font-size: 0.78rem; font-weight: 700; }
-    .weather-forecast-day-temps .lo { opacity: 0.7; font-weight: 500; }
-    .weather-forecast-day-rain { font-size: 0.66rem; margin-top: 3px; opacity: 0.85; }
     .weather-hourly-label {
       font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
       opacity: 0.8; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.22);
@@ -186,6 +171,12 @@
     .weather-hourly-emoji { font-size: 1.1rem; margin: 3px 0; }
     .weather-hourly-temp { font-size: 0.76rem; font-weight: 700; }
     .weather-hourly-rain { font-size: 0.62rem; opacity: 0.85; margin-top: 1px; }
+    .weather-forecast-link {
+      display: block; width: 100%; margin-top: 14px; padding: 10px 0; border: none;
+      border-radius: var(--radius-sm); background: rgba(255,255,255,0.14); color: #fff;
+      font-size: 0.82rem; font-weight: 700; cursor: pointer; text-align: center;
+    }
+    .weather-forecast-link:hover { background: rgba(255,255,255,0.22); }
     .hub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
     .hub-card {
       background: var(--card-bg); border-radius: var(--radius-md); overflow: hidden; cursor: pointer;
@@ -883,22 +874,17 @@
         + (uv ? '<div class="weather-stat"><div class="weather-stat-label">UV Today</div><div class="weather-stat-value ' + uv.cls + '">' + uv.label + '</div></div>' : '')
         + '</div>';
 
-      // Full week (today + next 6) rather than the old 4-day strip — Open-
-      // Meteo's forecast_days is 7 now (fetchers/weather.js), so there's
-      // always a full 7 entries here to show.
-      const forecast = (w.forecast || []).slice(0, 7).map((f, i) => {
-        const d = new Date(f.date + 'T12:00:00');
-        const dayName = i === 0 ? 'Today' : (isNaN(d) ? '' : DAY_NAMES[d.getDay()]);
-        const rain = f.rainChancePct != null ? '<div class="weather-forecast-day-rain">☂️ ' + Math.round(f.rainChancePct) + '%</div>' : '';
-        return '<div class="weather-forecast-day">'
-          + '<div class="weather-forecast-day-name">' + dayName + '</div>'
-          + '<div class="weather-forecast-day-emoji">' + f.emoji + '</div>'
-          + '<div class="weather-forecast-day-temps">' + Math.round(f.maxTempC) + '&deg; <span class="lo">' + Math.round(f.minTempC) + '&deg;</span></div>'
-          + rain
-          + '</div>';
-      }).join('');
-
+      // The 7-day forecast lives on the Weather Details page now (it
+      // already renders the full w.forecast array with no slicing — see
+      // renderWeatherDetailsDetail's "Extended forecast" block, which
+      // picked up all 7 days for free once fetchers/weather.js went from
+      // forecast_days=4 to 7). The front-page hero card stays focused on
+      // right-now + the next 24 hours, with a link through to the full
+      // week rather than repeating it here — Ady's call: the daily strip
+      // "looked too much" stacked on top of the hourly one on the main
+      // screen.
       const hourly = renderHourlyStrip(w.hourlyNext24);
+      const forecastLink = '<button class="weather-forecast-link" onclick="openDetail(\'weatherDetails\')">See the full 7-day forecast →</button>';
 
       return '<div class="weather-hero ' + cls + '">'
         + warningsBanner
@@ -913,7 +899,7 @@
         + '</div>'
         + statsRow
         + hourly
-        + (forecast ? '<div class="weather-forecast-strip">' + forecast + '</div>' : '')
+        + forecastLink
         + '</div>';
     }
 
