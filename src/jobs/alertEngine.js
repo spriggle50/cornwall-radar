@@ -108,7 +108,7 @@ async function checkWeatherWarning(location, config, dateKey) {
   const conditions = [];
 
   if (current && current.windGustsKph != null && current.windGustsKph >= 50) {
-    conditions.push({ type: 'high_wind', message: `Wind gusts of around ${Math.round(current.windGustsKph)}km/h reported right now` });
+    conditions.push({ type: 'high_wind', message: `Wind gusts of around ${Math.round(current.windGustsKph * 0.621371)}mph reported right now` });
   }
   if (today) {
     if (today.rainChancePct >= 80 && HEAVY_RAIN_CODES.includes(today.code)) {

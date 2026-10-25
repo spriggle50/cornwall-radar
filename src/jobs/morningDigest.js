@@ -47,7 +47,7 @@ function digestHtml({ location, weather, tides, traffic, flood, pollen, hour }) 
   const w = weather && !weather.unavailable ? weather.current : null;
   const forecastToday = weather && !weather.unavailable ? (weather.forecast || [])[0] : null;
   const weatherLine = w
-    ? `${w.emoji} ${Math.round(w.tempC)}&deg;C now, ${w.condition.toLowerCase()} (feels like ${Math.round(w.feelsLikeC)}&deg;C), wind ${Math.round(w.windKph)}km/h`
+    ? `${w.emoji} ${Math.round(w.tempC)}&deg;C now, ${w.condition.toLowerCase()} (feels like ${Math.round(w.feelsLikeC)}&deg;C), wind ${Math.round(w.windKph * 0.621371)}mph`
     : 'Weather unavailable right now';
   const forecastLine = forecastToday
     ? `Today's high ${Math.round(forecastToday.maxTempC)}&deg;C / low ${Math.round(forecastToday.minTempC)}&deg;C, ${forecastToday.rainChancePct}% chance of rain${forecastToday.uvIndexMax != null ? `, UV index ${Math.round(forecastToday.uvIndexMax)}` : ''}`

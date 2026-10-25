@@ -19,8 +19,12 @@ async function getWeather(lat = DEFAULT_LAT, lon = DEFAULT_LON) {
   // this function (the dashboard, the morning digest) is untouched.
   url.searchParams.set('current', 'temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_gusts_10m,precipitation,is_day');
   url.searchParams.set('daily', 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code,uv_index_max');
+  // Hourly block — purely additive again, used for the new "next 24 hours"
+  // strip (hourlyNext24 below). forecast_days already covers a full week,
+  // so there's always at least 24h of hourly data ahead of "now" to slice.
+  url.searchParams.set('hourly', 'temperature_2m,precipitation_probability,weather_code,is_day');
   url.searchParams.set('timezone', 'Europe/London');
-  url.searchParams.set('forecast_days', '4');
+  url.searchParams.set('forecast_days', '7');
 
   const res = await fetchWithTimeout(url);
   if (!res.ok) {
@@ -53,8 +57,40 @@ async function getWeather(lat = DEFAULT_LAT, lon = DEFAULT_LON) {
       emoji: weatherEmoji(data.daily.weather_code[i], true),
       uvIndexMax: data.daily.uv_index_max ? data.daily.uv_index_max[i] : null,
     })),
+    hourlyNext24: buildHourlyNext24(data),
     fetchedAt: new Date().toISOString(),
   };
+}
+
+// Open-Meteo's hourly arrays cover the whole forecast_days window, indexed
+// in lockstep by data.hourly.time[i] — this just finds "now" in that array
+// (current.time is in the same Europe/London-local, no-offset format as
+// hourly.time, so a direct string comparison works) and slices the next
+// 24 entries from there. Falls back to the start of the array rather than
+// throwing if "now" isn't found for some reason — a slightly-off hourly
+// strip is far better than losing the whole weather card over it.
+function buildHourlyNext24(data) {
+  const times = data.hourly && data.hourly.time;
+  if (!Array.isArray(times) || !times.length) return [];
+
+  const nowIso = data.current && data.current.time;
+  let startIdx = nowIso ? times.findIndex((t) => t >= nowIso) : 0;
+  if (startIdx === -1) startIdx = 0;
+
+  return times.slice(startIdx, startIdx + 24).map((time, offset) => {
+    const i = startIdx + offset;
+    const code = data.hourly.weather_code[i];
+    const isDay = !!data.hourly.is_day[i];
+    return {
+      time,
+      code,
+      tempC: data.hourly.temperature_2m[i],
+      rainChancePct: data.hourly.precipitation_probability[i],
+      isDay,
+      condition: describeWeatherCode(code),
+      emoji: weatherEmoji(code, isDay),
+    };
+  });
 }
 
 // WMO weather codes -> plain English (Open-Meteo uses the WMO standard)

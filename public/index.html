@@ -157,15 +157,35 @@
     .weather-forecast-strip {
       display: flex; gap: 8px; margin-top: 16px; padding-top: 14px;
       border-top: 1px solid rgba(255,255,255,0.22);
+      overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
     }
+    .weather-forecast-strip::-webkit-scrollbar { display: none; }
     .weather-forecast-day {
-      flex: 1; text-align: center; background: rgba(255,255,255,0.1); border-radius: var(--radius-sm);
+      flex: 0 0 60px; text-align: center; background: rgba(255,255,255,0.1); border-radius: var(--radius-sm);
       padding: 9px 4px;
     }
     .weather-forecast-day-name { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; opacity: 0.85; }
     .weather-forecast-day-emoji { font-size: 1.35rem; margin: 4px 0 2px; }
     .weather-forecast-day-temps { font-size: 0.78rem; font-weight: 700; }
     .weather-forecast-day-temps .lo { opacity: 0.7; font-weight: 500; }
+    .weather-forecast-day-rain { font-size: 0.66rem; margin-top: 3px; opacity: 0.85; }
+    .weather-hourly-label {
+      font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+      opacity: 0.8; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.22);
+    }
+    .weather-hourly-strip {
+      display: flex; gap: 6px; margin-top: 8px;
+      overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    }
+    .weather-hourly-strip::-webkit-scrollbar { display: none; }
+    .weather-hourly-item {
+      flex: 0 0 48px; text-align: center; background: rgba(255,255,255,0.1); border-radius: var(--radius-sm);
+      padding: 7px 2px;
+    }
+    .weather-hourly-time { font-size: 0.64rem; font-weight: 700; opacity: 0.85; }
+    .weather-hourly-emoji { font-size: 1.1rem; margin: 3px 0; }
+    .weather-hourly-temp { font-size: 0.76rem; font-weight: 700; }
+    .weather-hourly-rain { font-size: 0.62rem; opacity: 0.85; margin-top: 1px; }
     .hub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
     .hub-card {
       background: var(--card-bg); border-radius: var(--radius-md); overflow: hidden; cursor: pointer;
@@ -794,6 +814,38 @@
       return { label: 'Extreme', cls: 'uv-extreme' };
     }
 
+    // Wind is shown in mph throughout the dashboard (UK convention) even
+    // though the underlying fetcher/threshold logic (fetchers/weather.js,
+    // jobs/alertEngine.js) stays in km/h internally — this only converts
+    // at the point of display.
+    function kphToMph(kph) {
+      return Math.round(kph * 0.621371);
+    }
+
+    function formatHourLabel(d, isFirst) {
+      if (isFirst) return 'Now';
+      const h = d.getHours();
+      const period = h >= 12 ? 'pm' : 'am';
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      return h12 + period;
+    }
+
+    function renderHourlyStrip(hourly) {
+      if (!hourly || !hourly.length) return '';
+      const items = hourly.slice(0, 24).map((h, i) => {
+        const d = new Date(h.time);
+        const label = isNaN(d) ? '' : formatHourLabel(d, i === 0);
+        const rain = h.rainChancePct != null ? '<div class="weather-hourly-rain">' + Math.round(h.rainChancePct) + '%</div>' : '';
+        return '<div class="weather-hourly-item">'
+          + '<div class="weather-hourly-time">' + label + '</div>'
+          + '<div class="weather-hourly-emoji">' + h.emoji + '</div>'
+          + '<div class="weather-hourly-temp">' + Math.round(h.tempC) + '&deg;</div>'
+          + rain
+          + '</div>';
+      }).join('');
+      return '<div class="weather-hourly-label">Next 24 hours</div><div class="weather-hourly-strip">' + items + '</div>';
+    }
+
     function renderStormWarningsBanner(warningsData) {
       if (!warningsData || warningsData.unavailable || warningsData.configured === false) return '';
       const warnings = warningsData.warnings || [];
@@ -827,19 +879,26 @@
 
       const statsRow = '<div class="weather-stats-row">'
         + '<div class="weather-stat"><div class="weather-stat-label">Feels like</div><div class="weather-stat-value">' + Math.round(c.feelsLikeC) + '&deg;</div></div>'
-        + '<div class="weather-stat"><div class="weather-stat-label">Wind</div><div class="weather-stat-value">' + Math.round(c.windKph) + ' km/h</div></div>'
+        + '<div class="weather-stat"><div class="weather-stat-label">Wind</div><div class="weather-stat-value">' + kphToMph(c.windKph) + ' mph</div></div>'
         + (uv ? '<div class="weather-stat"><div class="weather-stat-label">UV Today</div><div class="weather-stat-value ' + uv.cls + '">' + uv.label + '</div></div>' : '')
         + '</div>';
 
-      const forecast = (w.forecast || []).slice(1, 5).map(f => {
+      // Full week (today + next 6) rather than the old 4-day strip — Open-
+      // Meteo's forecast_days is 7 now (fetchers/weather.js), so there's
+      // always a full 7 entries here to show.
+      const forecast = (w.forecast || []).slice(0, 7).map((f, i) => {
         const d = new Date(f.date + 'T12:00:00');
-        const dayName = isNaN(d) ? '' : DAY_NAMES[d.getDay()];
+        const dayName = i === 0 ? 'Today' : (isNaN(d) ? '' : DAY_NAMES[d.getDay()]);
+        const rain = f.rainChancePct != null ? '<div class="weather-forecast-day-rain">☂️ ' + Math.round(f.rainChancePct) + '%</div>' : '';
         return '<div class="weather-forecast-day">'
           + '<div class="weather-forecast-day-name">' + dayName + '</div>'
           + '<div class="weather-forecast-day-emoji">' + f.emoji + '</div>'
           + '<div class="weather-forecast-day-temps">' + Math.round(f.maxTempC) + '&deg; <span class="lo">' + Math.round(f.minTempC) + '&deg;</span></div>'
+          + rain
           + '</div>';
       }).join('');
+
+      const hourly = renderHourlyStrip(w.hourlyNext24);
 
       return '<div class="weather-hero ' + cls + '">'
         + warningsBanner
@@ -853,6 +912,7 @@
         + '<span class="weather-location-tag">📍 ' + locTag + '</span>'
         + '</div>'
         + statsRow
+        + hourly
         + (forecast ? '<div class="weather-forecast-strip">' + forecast + '</div>' : '')
         + '</div>';
     }
@@ -1427,7 +1487,7 @@
         const stats = [
           wd.humidityPct != null ? ['Humidity', wd.humidityPct + '%'] : null,
           wd.dewPointC != null ? ['Dew point', Math.round(wd.dewPointC) + '°'] : null,
-          wd.windGustKph != null ? ['Wind gusts', Math.round(wd.windGustKph) + ' km/h'] : null,
+          wd.windGustKph != null ? ['Wind gusts', kphToMph(wd.windGustKph) + ' mph'] : null,
           wd.windDirection ? ['Wind direction', wd.windDirection] : null,
           wd.cloudCoverPct != null ? ['Cloud cover', wd.cloudCoverPct + '%'] : null,
           wd.visibilityKm != null ? ['Visibility', wd.visibilityKm + ' km'] : null,
