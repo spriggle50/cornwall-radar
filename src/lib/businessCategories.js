@@ -45,6 +45,8 @@ const BUSINESS_CATEGORIES = [
   'Photography & Media',
   'Printers & Signage',
   'IT & Tech Services',
+  'Marketing & Advertising',
+  'Web Design & SEO',
   'Other',
 ];
 
