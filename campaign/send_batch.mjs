@@ -59,8 +59,6 @@ const GROUP_ORDER = [
   "Shopping & Lifestyle",
   "Property, Homes & Gardens",
   "Business & Professional Services",
-  "Marketing & Advertising",
-  "Web Design & SEO",
   "Rest, Relaxation & Beauty",
   "Weddings",
   "Dogs & Pet Services",

@@ -48,15 +48,5 @@
     "subject": "Free local listing for {{business_name}}",
     "hook": "Holiday let owners and property managers looking for reliable local services.",
     "body": "Cornwall Radar is building a free local directory for Cornwall businesses. A listing for {{business_name}} puts you in front of holiday let owners and property managers looking for cleaning, laundry and changeover services they can trust — free, no commission, no catch."
-  },
-  "Marketing & Advertising": {
-    "subject": "Free local listing for {{business_name}}",
-    "hook": "\"Near me\" searches from Cornwall businesses looking for a local marketing or advertising partner, not a national agency.",
-    "body": "Cornwall Radar is building a free local business directory for Cornwall. A listing for {{business_name}} means local businesses searching for a marketing agency, advertising specialist or PR consultant find an independent Cornish business first — free, no commission, no catch."
-  },
-  "Web Design & SEO": {
-    "subject": "Free local listing for {{business_name}}",
-    "hook": "\"Near me\" searches from Cornwall businesses looking for a local web designer or SEO specialist, not an offshore agency.",
-    "body": "Cornwall Radar is building a free local business directory for Cornwall. A listing for {{business_name}} means local businesses searching for a web designer, developer or SEO consultant find an independent Cornish business first — free, no commission, no catch."
   }
 }
