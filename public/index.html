@@ -1950,7 +1950,7 @@
             const stars = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
             const date = new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
             return '<div class="review-row">'
-              + '<div class="review-row-top"><span class="review-row-stars">' + stars + '</span><span class="review-row-date">' + date + '</span></div>'
+              + '<div class="review-row-top"><span><strong>' + (r.reviewer_name || 'Anonymous') + '</strong> <span class="review-row-stars">' + stars + '</span></span><span class="review-row-date">' + date + '</span></div>'
               + (r.comment ? '<p class="review-row-comment">' + r.comment + '</p>' : '')
               + (r.reply ? '<div class="review-row-reply"><strong>Business reply:</strong> ' + r.reply + '</div>' : '')
               + '</div>';
@@ -1961,6 +1961,7 @@
         : (
           '<div class="review-form">'
           + '<label>' + (myReview ? 'Update your review' : 'Leave a review') + '</label>'
+          + '<input type="text" id="reviewName-' + businessId + '" maxlength="80" placeholder="Your name (shown with your review)" value="' + (myReview && myReview.reviewer_name ? myReview.reviewer_name : '') + '" style="width:100%; margin-bottom:6px;" />'
           + '<select id="reviewRating-' + businessId + '">'
           + [5, 4, 3, 2, 1].map((n) => '<option value="' + n + '"'
             + (myReview ? (myReview.rating === n ? ' selected' : '') : (n === 5 ? ' selected' : ''))
@@ -1977,11 +1978,16 @@
 
     async function submitReview(businessId) {
       const rating = parseInt(document.getElementById('reviewRating-' + businessId).value, 10);
+      const name = document.getElementById('reviewName-' + businessId).value.trim();
       const comment = document.getElementById('reviewComment-' + businessId).value.trim();
       const status = document.getElementById('reviewStatusMsg-' + businessId);
+      if (!name) {
+        status.innerHTML = '<p class="account-error">Enter your name.</p>';
+        return;
+      }
       status.innerHTML = '<p class="account-note">Saving…</p>';
       try {
-        await authedFetch('/api/reviews/' + businessId, { method: 'PUT', body: JSON.stringify({ rating, comment }) });
+        await authedFetch('/api/reviews/' + businessId, { method: 'PUT', body: JSON.stringify({ rating, name, comment }) });
         await loadReviewsFor(businessId, true);
         renderDirectoryDetail();
       } catch (err) {

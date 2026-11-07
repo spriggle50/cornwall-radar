@@ -138,7 +138,7 @@ ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script
   .review-form { background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px 18px; margin:10px 0 20px; }
   .review-form label { display:block; font-weight:600; font-size:0.85rem; margin:12px 0 4px; }
   .review-form label:first-child { margin-top:0; }
-  .review-form select, .review-form input[type="email"], .review-form textarea {
+  .review-form select, .review-form input[type="email"], .review-form input[type="text"], .review-form textarea {
     width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px;
     font-size:0.92rem; font-family:inherit; box-sizing:border-box; background:#fff; color:var(--text);
   }
@@ -149,6 +149,12 @@ ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script
   .flash-note { border-radius:8px; padding:10px 14px; margin:0 0 14px; font-size:0.9rem; }
   .flash-success { background:#e3f6ec; color:#07734f; border:1px solid #bfe8d3; }
   .flash-error { background:#fdeceb; color:#a33; border:1px solid #f5c6c2; }
+  .reviews-list { margin:10px 0 20px; }
+  .review-item { padding:12px 0; border-top:1px solid var(--border); }
+  .review-item:first-child { border-top:none; }
+  .review-item-top { margin:0; }
+  .review-item-stars { color:#9a6b00; margin-left:6px; }
+  .review-item-comment { margin:4px 0 0; color:var(--text-2); font-size:0.9rem; line-height:1.45; }
 </style>
 </head>
 <body>
@@ -416,8 +422,9 @@ router.get('/directory/business/:id/:slug?', async (req, res) => {
 
     const { data: reviewRows } = await supabaseAdmin
       .from('business_reviews')
-      .select('rating')
-      .eq('business_id', b.id);
+      .select('rating, comment, reviewer_name, created_at')
+      .eq('business_id', b.id)
+      .order('created_at', { ascending: false });
     const reviewCount = (reviewRows || []).length;
     const avgRating = reviewCount
       ? Math.round((reviewRows.reduce((sum, r) => sum + r.rating, 0) / reviewCount) * 10) / 10
@@ -467,6 +474,8 @@ router.get('/directory/business/:id/:slug?', async (req, res) => {
           <option value="2">★★☆☆☆ Poor</option>
           <option value="1">★☆☆☆☆ Terrible</option>
         </select>
+        <label for="reviewName">Your name</label>
+        <input type="text" name="name" id="reviewName" required maxlength="80" placeholder="Shown with your review" />
         <label for="reviewEmail">Your email</label>
         <input type="email" name="email" id="reviewEmail" required placeholder="you@example.com" />
         <p class="hint">Never shown publicly — only used so we can remove this review if it needs removing.</p>
@@ -474,6 +483,22 @@ router.get('/directory/business/:id/:slug?', async (req, res) => {
         <textarea name="comment" id="reviewComment" placeholder="What was your experience like?"></textarea>
         <button type="submit">Post review</button>
       </form>`;
+
+    // Public list of existing reviews, same "name + stars + comment, never
+    // an email" shape as the directory API's own public reviews endpoint
+    // (routes/directory.js) — this page just renders it server-side since
+    // it's deliberately JS-free.
+    const reviewsList = reviewCount
+      ? `
+      <h3>What people say</h3>
+      <div class="reviews-list">
+        ${reviewRows.map((r) => `
+          <div class="review-item">
+            <p class="review-item-top"><strong>${escHtml(r.reviewer_name || 'Anonymous')}</strong> <span class="review-item-stars">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</span></p>
+            ${r.comment ? `<p class="review-item-comment">${escHtml(r.comment)}</p>` : ''}
+          </div>`).join('')}
+      </div>`
+      : '';
 
     const body = `
       <div class="breadcrumbs"><a href="/directory">Cornwall Business Directory</a> › <a href="${categoryPath(b.category)}">${escHtml(b.category)}</a> › ${escHtml(b.name)}</div>
@@ -491,6 +516,7 @@ router.get('/directory/business/:id/:slug?', async (req, res) => {
         <a href="${categoryPath(b.category)}">← More ${escHtml(b.category)} businesses in Cornwall</a>
       </div>
       ${reviewForm}
+      ${reviewsList}
       ${LIST_BUSINESS_CTA}`;
 
     const jsonLd = {

@@ -404,10 +404,13 @@ router.get('/vacancies', async (req, res) => {
 });
 
 // GET /api/directory/:businessId/reviews — public list of reviews on one
-// business, newest first, plus the average rating. Deliberately excludes
+// business, newest first, plus the average rating. Each review carries its
+// own reviewer_name (shown publicly, like a Google/Yell reviewer's name —
+// collected per-review, not tied to any account). Deliberately excludes
 // consumer_id/email — sign-in is required to WRITE a review (see
 // routes/reviews.js) to cut down on spam, but that's not the same as
-// making reviewers publicly identifiable; nothing here says who wrote what.
+// exposing anyone's actual contact details; nothing here ever returns an
+// email address.
 router.get('/:businessId/reviews', async (req, res) => {
   if (!supabaseConfigured()) {
     return res.json({ configured: false, reviews: [] });
@@ -416,7 +419,7 @@ router.get('/:businessId/reviews', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('business_reviews')
-      .select('id, rating, comment, reply, replied_at, created_at')
+      .select('id, rating, comment, reviewer_name, reply, replied_at, created_at')
       .eq('business_id', req.params.businessId)
       .order('created_at', { ascending: false });
     if (error) throw new Error(error.message);

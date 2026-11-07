@@ -46,7 +46,7 @@ function requireAdminToken(req, res, next) {
 router.get('/admin/review/:id', requireAdminToken, async (req, res) => {
   const { data: review, error } = await supabaseAdmin
     .from('business_reviews')
-    .select('id, business_id, consumer_id, reviewer_email, rating, comment, reply, created_at')
+    .select('id, business_id, consumer_id, reviewer_email, reviewer_name, rating, comment, reply, created_at')
     .eq('id', req.params.id)
     .maybeSingle();
   if (error || !review) {
@@ -71,7 +71,8 @@ router.get('/admin/review/:id', requireAdminToken, async (req, res) => {
       <p style="color:#5b6b6a; margin-top:0;">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</p>
       ${review.comment ? `<p>${escHtml(review.comment)}</p>` : '<p><em>No written comment.</em></p>'}
       ${review.reply ? `<p><strong>Business's reply:</strong> ${escHtml(review.reply)}</p>` : ''}
-      <p><strong>Reviewer's email:</strong> ${escHtml(reviewerEmail)}</p>
+      <p><strong>Name shown publicly:</strong> ${escHtml(review.reviewer_name || 'Anonymous')}</p>
+      <p><strong>Reviewer's email (private):</strong> ${escHtml(reviewerEmail)}</p>
       <form method="POST" action="${removeUrl}" onsubmit="return confirm('Remove this review? This can\\'t be undone.');">
         <button type="submit" style="background:#c0392b; color:#fff; border:none; padding:10px 20px; border-radius:6px; font-size:1em; cursor:pointer;">Remove this review</button>
       </form>
@@ -129,11 +130,18 @@ router.post('/public/:businessId', express.urlencoded({ extended: false }), asyn
   const backToBusiness = (query) => res.redirect(303, businessPagePath(business) + query);
 
   const ratingNum = Number((req.body || {}).rating);
+  const name = String((req.body || {}).name || '').trim();
   const email = String((req.body || {}).email || '').trim().toLowerCase();
   const comment = String((req.body || {}).comment || '').trim();
 
   if (!Number.isInteger(ratingNum) || ratingNum < 1 || ratingNum > 5) {
     return backToBusiness('?reviewError=' + encodeURIComponent('Pick a star rating from 1 to 5.'));
+  }
+  // A name is required and shown publicly next to the review (like a
+  // Google/Yell reviewer's name) — the email never is (see this file's top
+  // comment); it's only ever used for the admin alert/removal flow below.
+  if (!name || name.length > 80) {
+    return backToBusiness('?reviewError=' + encodeURIComponent('Enter your name (up to 80 characters).'));
   }
   if (!EMAIL_RE.test(email)) {
     return backToBusiness('?reviewError=' + encodeURIComponent('Enter a valid email address.'));
@@ -161,7 +169,7 @@ router.post('/public/:businessId', express.urlencoded({ extended: false }), asyn
     if (existing) {
       const { data, error } = await supabaseAdmin
         .from('business_reviews')
-        .update({ rating: ratingNum, comment: comment || null, updated_at: new Date().toISOString() })
+        .update({ reviewer_name: name, rating: ratingNum, comment: comment || null, updated_at: new Date().toISOString() })
         .eq('id', existing.id)
         .select('id')
         .single();
@@ -170,7 +178,7 @@ router.post('/public/:businessId', express.urlencoded({ extended: false }), asyn
     } else {
       const { data, error } = await supabaseAdmin
         .from('business_reviews')
-        .insert({ business_id: business.id, consumer_id: null, reviewer_email: email, rating: ratingNum, comment: comment || null })
+        .insert({ business_id: business.id, consumer_id: null, reviewer_email: email, reviewer_name: name, rating: ratingNum, comment: comment || null })
         .select('id')
         .single();
       if (error) throw new Error(error.message);
@@ -189,7 +197,7 @@ router.post('/public/:businessId', express.urlencoded({ extended: false }), asyn
               <p>A new review just went live on Cornwall Radar (left without an account, via the business's own page link):</p>
               <p><strong>${escHtml(business.name)}</strong> — ${'★'.repeat(ratingNum)}${'☆'.repeat(5 - ratingNum)}</p>
               ${comment ? `<p>${escHtml(comment)}</p>` : ''}
-              <p><strong>Reviewer's email:</strong> ${escHtml(email)}</p>
+              <p><strong>Name shown publicly:</strong> ${escHtml(name)}<br><strong>Reviewer's email (private):</strong> ${escHtml(email)}</p>
               <p><a href="${reviewUrl}">Review it, and remove if needed →</a></p>
             </div>
           `,
@@ -215,7 +223,7 @@ router.get('/:businessId/mine', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('business_reviews')
-      .select('id, rating, comment, created_at, updated_at')
+      .select('id, rating, comment, reviewer_name, created_at, updated_at')
       .eq('business_id', req.params.businessId)
       .eq('consumer_id', req.user.id)
       .maybeSingle();
@@ -232,10 +240,18 @@ router.get('/:businessId/mine', async (req, res) => {
 // duplicate, same "save always replaces" shape as the business listing and
 // the morning-digest preference elsewhere in this project.
 router.put('/:businessId', async (req, res) => {
-  const { rating, comment } = req.body || {};
+  const { rating, comment, name } = req.body || {};
   const ratingNum = Number(rating);
+  // Shown publicly next to the review (like a Google/Yell reviewer's
+  // name) — there's no name on a consumer's account to fall back to
+  // (schema.sql's consumers table only has an email), so every review
+  // carries its own display name instead.
+  const reviewerName = String(name || '').trim();
   if (!Number.isInteger(ratingNum) || ratingNum < 1 || ratingNum > 5) {
     return res.status(400).json({ error: 'Rating must be a whole number from 1 to 5' });
+  }
+  if (!reviewerName || reviewerName.length > 80) {
+    return res.status(400).json({ error: 'Enter your name (up to 80 characters)' });
   }
 
   try {
@@ -259,11 +275,12 @@ router.put('/:businessId', async (req, res) => {
       .upsert({
         business_id: req.params.businessId,
         consumer_id: req.user.id,
+        reviewer_name: reviewerName,
         rating: ratingNum,
         comment: (comment || '').trim() || null,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'business_id,consumer_id' })
-      .select('id, rating, comment, created_at, updated_at')
+      .select('id, rating, comment, reviewer_name, created_at, updated_at')
       .single();
     if (error) throw new Error(error.message);
 
@@ -281,6 +298,7 @@ router.put('/:businessId', async (req, res) => {
             <p>A new review just went live on Cornwall Radar:</p>
             <p><strong>${escHtml(business.name)}</strong> — ${'★'.repeat(ratingNum)}${'☆'.repeat(5 - ratingNum)}</p>
             ${data.comment ? `<p>${escHtml(data.comment)}</p>` : ''}
+            <p><strong>Name shown publicly:</strong> ${escHtml(reviewerName)}<br><strong>Reviewer's email (private):</strong> ${escHtml(req.user.email || '')}</p>
             <p><a href="${reviewUrl}">Review it, and remove if needed →</a></p>
           </div>
         `,
