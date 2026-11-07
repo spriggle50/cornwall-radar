@@ -3463,7 +3463,6 @@
               + '<div class="review-row-top"><span><strong>' + r.businessName + '</strong> — <span class="review-row-stars">' + stars + '</span></span><span class="review-row-date">' + date + '</span></div>'
               + (r.comment ? '<p class="review-row-comment">' + r.comment + '</p>' : '')
               + (r.reply ? '<div class="review-row-reply"><strong>Business reply:</strong> ' + r.reply + '</div>' : '')
-              + '<p class="review-row-comment">Reviewer: ' + r.reviewerEmail + '</p>'
               + '<button class="btn-secondary" onclick="adminRemoveReview(\'' + r.id + '\')">Remove review</button>'
               + '<div id="adminReviewStatus-' + r.id + '"></div>'
               + '</div>';
