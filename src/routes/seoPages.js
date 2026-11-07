@@ -121,7 +121,7 @@ ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script
   .cat-nav a { display:inline-block; font-size:0.82rem; background:#fff; border:1px solid var(--border); border-radius:999px; padding:5px 12px; text-decoration:none; color:var(--text-2); }
   .cat-nav a.active { background:var(--accent); color:#fff; border-color:var(--accent); }
   .listing { background:#fff; border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:10px; display:flex; gap:12px; align-items:flex-start; }
-  .listing-logo { width:44px; height:44px; border-radius:8px; object-fit:cover; flex-shrink:0; border:1px solid var(--border); background:#fff; }
+  .listing-logo { width:44px; height:44px; border-radius:8px; object-fit:contain; box-sizing:border-box; padding:3px; flex-shrink:0; border:1px solid var(--border); background:#fff; }
   .listing-body { min-width:0; flex:1; }
   .listing h3 { margin:0 0 2px; font-size:1.02rem; }
   .listing h3 a { color:var(--text); text-decoration:none; }
@@ -130,7 +130,7 @@ ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script
   .featured-tag { display:inline-block; font-size:0.62rem; font-weight:800; text-transform:uppercase; background:#fff2cc; color:#9a6b00; padding:2px 8px; border-radius:999px; margin-left:6px; vertical-align:middle; }
   .btn-line a { display:inline-block; margin:10px 10px 0 0; font-weight:600; }
   .biz-header { display:flex; gap:16px; align-items:center; margin-bottom:4px; }
-  .biz-logo { width:72px; height:72px; border-radius:12px; object-fit:cover; flex-shrink:0; border:1px solid var(--border); background:#fff; }
+  .biz-logo { width:72px; height:72px; border-radius:12px; object-fit:contain; box-sizing:border-box; padding:5px; flex-shrink:0; border:1px solid var(--border); background:#fff; }
   footer.site-footer { text-align:center; color:var(--text-3); font-size:0.8rem; padding:24px 20px 40px; }
   footer.site-footer a { color:var(--text-3); }
   .breadcrumbs { font-size:0.8rem; color:var(--text-3); margin-bottom:14px; }
