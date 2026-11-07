@@ -2455,6 +2455,47 @@
       return body;
     }
 
+    // A business's own public page — same path format as
+    // routes/seoPages.js's businessPath()/slugify() (kept in sync by hand;
+    // the two can't share code across a server file and this static HTML
+    // file). The slug is cosmetic only — GET /directory/business/:id/:slug
+    // looks up by :id alone — so even if this ever drifts from the
+    // server's own slug, the link still resolves correctly, just with a
+    // less tidy-looking URL. Used by the "Copy link"/"View page" buttons
+    // on both the owner's own account panel and the admin panel, so
+    // whoever created a listing can actually hand its link to the
+    // business — until now there was nowhere in the app that showed it.
+    function slugifyBusinessName(text) {
+      return String(text || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'listing';
+    }
+    function businessPublicUrl(id, name) {
+      return 'https://www.cornwallradar.co.uk/directory/business/' + id + '/' + slugifyBusinessName(name);
+    }
+    // Takes the button element itself (reads its own data-biz-id/
+    // data-biz-name) rather than the name as a plain argument — a business
+    // name can contain an apostrophe or quote ("Dave's Taxis"), which would
+    // break out of the onclick="..." attribute if baked in as literal text.
+    // Attribute values go through this file's own esc() first wherever
+    // they're set, the same safe pattern already used for every other
+    // double-quoted attribute here.
+    async function copyBusinessLink(btn, statusElId) {
+      const url = businessPublicUrl(btn.dataset.bizId, btn.dataset.bizName);
+      const status = document.getElementById(statusElId);
+      try {
+        await navigator.clipboard.writeText(url);
+        if (status) status.innerHTML = '<p class="account-note">Copied: <a href="' + url + '" target="_blank" rel="noopener">' + url + '</a></p>';
+      } catch (err) {
+        // Clipboard API can be blocked (permissions, non-secure context);
+        // fall back to just showing the link so it can be selected and
+        // copied by hand instead of failing silently.
+        if (status) status.innerHTML = '<p class="account-note">' + url + '</p>';
+      }
+    }
+
     async function renderAccountPanel() {
       const panel = document.getElementById('accountPanel');
       const backBtn = '<button class="back-btn" onclick="closeAccountPanel()">← Back</button>';
@@ -3099,6 +3140,19 @@
         + '</div>'
       );
 
+      // Your own listing's public link — nowhere in the app showed this
+      // before, so there was no way to hand it to anyone (print it on a
+      // flyer, drop it in your own email signature) without hunting for
+      // it by hand.
+      const linkBlock = !business ? '' : (
+        '<div class="account-field"><label>Your listing\'s link</label>'
+        + '<p class="account-note">' + businessPublicUrl(business.id, business.name) + '</p>'
+        + '<button class="btn-secondary" data-biz-id="' + esc(business.id) + '" data-biz-name="' + esc(business.name) + '" onclick="copyBusinessLink(this, \'bizLinkStatusMsg\')">Copy link</button> '
+        + '<a class="btn-secondary" style="text-decoration:none; display:inline-block;" href="' + businessPublicUrl(business.id, business.name) + '" target="_blank" rel="noopener">View page</a>'
+        + '<div id="bizLinkStatusMsg"></div>'
+        + '</div>'
+      );
+
       return '<div class="card"><h2>🏪 Your business listing' + headerBadge + '</h2>'
         + (business
           ? '<p class="account-note">Visible in the public Business Directory right now. Editing below updates it instantly.</p>'
@@ -3128,6 +3182,7 @@
         + '<label style="font-weight:400; font-size:0.82rem;">Ends on (optional)</label>'
         + '<input type="date" id="bizVoucherExpiresAt" value="' + esc(business && business.voucher_expires_at) + '" />'
         + '</div>'
+        + linkBlock
         + logoBlock
         + ((business && business.subscription_status !== 'active')
           ? '<p class="account-note">Featured listings sort first in the directory and search, get a ★ badge, and rotate through the homepage\'s Sponsored strip — £4.99/month, less than other Cornwall business directories charge for a featured listing.</p>'
@@ -3391,8 +3446,10 @@
               + '<div class="review-row-top"><span><strong>' + b.name + '</strong> — ' + b.category + (b.secondary_category ? ' + ' + b.secondary_category : '') + (b.postcode ? ' · ' + b.postcode : '') + '</span><span class="review-row-date">' + date + '</span></div>'
               + '<p class="review-row-comment">' + b.email + ' · ' + (b.subscription_status || 'free') + '</p>'
               + '<button class="btn-secondary" onclick="toggleAdminEditBusiness(\'' + b.id + '\')">Edit details</button> '
+              + '<button class="btn-secondary" data-biz-id="' + esc(b.id) + '" data-biz-name="' + esc(b.name) + '" onclick="copyBusinessLink(this, \'adminBizLinkStatus-' + b.id + '\')">Copy link</button> '
               + '<button class="btn-secondary" onclick="adminRemoveBusiness(\'' + b.id + '\')">Remove listing</button>'
               + '<div id="adminBizStatus-' + b.id + '"></div>'
+              + '<div id="adminBizLinkStatus-' + b.id + '"></div>'
               + editForm
               + '</div>';
           }).join('')
