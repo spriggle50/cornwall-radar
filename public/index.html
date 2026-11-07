@@ -2104,7 +2104,7 @@
       let data;
       try {
         const params = new URLSearchParams();
-        params.set('category', activitiesFilters.category || ACTIVITIES_CATEGORIES.join(','));
+        params.set('category', activitiesFilters.category || ACTIVITIES_CATEGORIES.join('|'));
         if (activitiesFilters.q) params.set('q', activitiesFilters.q);
         if (currentLocation) { params.set('lat', currentLocation.lat); params.set('lon', currentLocation.lon); }
         const res = await fetch('/api/directory?' + params.toString());
