@@ -123,11 +123,13 @@ ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script
   .listing { background:#fff; border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:10px; display:flex; gap:12px; align-items:flex-start; }
   .listing-logo { width:44px; height:44px; border-radius:8px; object-fit:contain; box-sizing:border-box; padding:3px; flex-shrink:0; border:1px solid var(--border); background:#fff; }
   .listing-body { min-width:0; flex:1; }
-  .listing h3 { margin:0 0 2px; font-size:1.02rem; }
+  .listing h3 { margin:0 0 2px; font-size:1.02rem; display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+  .listing h3 .listing-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .listing h3 a { color:var(--text); text-decoration:none; }
   .listing .meta { color:var(--text-3); font-size:0.8rem; margin-bottom:6px; }
   .listing p { margin:6px 0; color:var(--text-2); font-size:0.92rem; }
   .featured-tag { display:inline-block; font-size:0.62rem; font-weight:800; text-transform:uppercase; background:#fff2cc; color:#9a6b00; padding:2px 8px; border-radius:999px; margin-left:6px; vertical-align:middle; }
+  .rating-badge { flex-shrink:0; font-size:0.8rem; font-weight:700; color:#9a6b00; white-space:nowrap; }
   .btn-line a { display:inline-block; margin:10px 10px 0 0; font-weight:600; }
   .biz-header { display:flex; gap:16px; align-items:center; margin-bottom:4px; }
   .biz-logo { width:72px; height:72px; border-radius:12px; object-fit:contain; box-sizing:border-box; padding:5px; flex-shrink:0; border:1px solid var(--border); background:#fff; }
@@ -225,8 +227,35 @@ function searchFormHtml(category, q) {
   </form>`;
 }
 
+// Turns raw {business_id, rating} rows into a per-business {avgRating,
+// reviewCount} — same logic as routes/directory.js's own aggregateRatings()
+// (duplicated by hand, like the rest of this project's small cross-file
+// helpers, since these route files don't share code with each other).
+function aggregateRatings(rows) {
+  const byBusiness = {};
+  for (const row of rows) {
+    if (!byBusiness[row.business_id]) byBusiness[row.business_id] = { sum: 0, count: 0 };
+    byBusiness[row.business_id].sum += row.rating;
+    byBusiness[row.business_id].count += 1;
+  }
+  const result = {};
+  for (const businessId of Object.keys(byBusiness)) {
+    const { sum, count } = byBusiness[businessId];
+    result[businessId] = { avgRating: Math.round((sum / count) * 10) / 10, reviewCount: count };
+  }
+  return result;
+}
+
 function renderListingHtml(b) {
   const featuredTag = b.subscription_status === 'active' ? '<span class="featured-tag">★ Featured</span>' : '';
+  // b.reviewCount/avgRating are attached in bulk by the /directory route
+  // below (one aggregateRatings() pass over all matching businesses,
+  // rather than a per-card query) — nothing shown at all when a business
+  // has no reviews yet, same "quiet until there's something to say" choice
+  // the in-app directory widget already makes.
+  const ratingBadge = b.reviewCount
+    ? `<span class="rating-badge">★ ${b.avgRating} (${b.reviewCount})</span>`
+    : '';
   // A plain grey square instead of an <img> at all when there's no logo —
   // no broken-image icon, and it keeps every row the same height whether or
   // not that business has uploaded one.
@@ -236,7 +265,7 @@ function renderListingHtml(b) {
   return `<div class="listing">
     ${logo}
     <div class="listing-body">
-      <h3><a href="${businessPath(b)}">${escHtml(b.name)}</a>${featuredTag}</h3>
+      <h3><span class="listing-name"><a href="${businessPath(b)}">${escHtml(b.name)}</a>${featuredTag}</span>${ratingBadge}</h3>
       <div class="meta">${escHtml(b.category)}${b.secondary_category ? ' + ' + escHtml(b.secondary_category) : ''}${b.town ? ' · ' + escHtml(b.town) : (b.postcode ? ' · ' + escHtml(b.postcode) : '')}</div>
       ${b.description ? `<p>${escHtml(b.description)}</p>` : ''}
     </div>
@@ -303,6 +332,26 @@ router.get('/directory', async (req, res) => {
       }
       return a.name.localeCompare(b.name);
     });
+
+    // One bulk query for every business on this page, rather than one per
+    // card — same approach routes/directory.js's own bulk listing endpoint
+    // already uses. Attached directly onto each business row so
+    // renderListingHtml() (used for both the flat and grouped-by-category
+    // render below) needs no extra argument.
+    if (businesses.length) {
+      const { data: ratingRows } = await supabaseAdmin
+        .from('business_reviews')
+        .select('business_id, rating')
+        .in('business_id', businesses.map((b) => b.id));
+      const ratings = aggregateRatings(ratingRows || []);
+      for (const b of businesses) {
+        const r = ratings[b.id];
+        if (r) {
+          b.avgRating = r.avgRating;
+          b.reviewCount = r.reviewCount;
+        }
+      }
+    }
 
     const searching = Boolean(q);
     const title = searching
