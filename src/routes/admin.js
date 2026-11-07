@@ -349,13 +349,16 @@ router.get('/reviews', async (req, res) => {
   try {
     const { data: reviews, error } = await supabaseAdmin
       .from('business_reviews')
-      .select('id, business_id, consumer_id, rating, comment, reply, created_at')
+      .select('id, business_id, consumer_id, reviewer_email, rating, comment, reply, created_at')
       .order('created_at', { ascending: false });
     if (error) throw new Error(error.message);
 
     const rows = reviews || [];
     const businessIds = [...new Set(rows.map((r) => r.business_id))];
-    const consumerIds = [...new Set(rows.map((r) => r.consumer_id))];
+    // consumer_id is null for a review left without an account (see
+    // reviews.js's top comment) — filter those out before the consumers
+    // lookup rather than querying with a null id in the list.
+    const consumerIds = [...new Set(rows.map((r) => r.consumer_id).filter(Boolean))];
 
     const [{ data: businesses }, { data: consumers }] = await Promise.all([
       businessIds.length
@@ -372,7 +375,9 @@ router.get('/reviews', async (req, res) => {
       id: r.id,
       businessId: r.business_id,
       businessName: businessNames[r.business_id] || 'Unknown business',
-      reviewerEmail: consumerEmails[r.consumer_id] || 'unknown',
+      // Signed-in reviewer's login email, or the plain email address left
+      // with an account-free review (reviewer_email — see reviews.js).
+      reviewerEmail: consumerEmails[r.consumer_id] || r.reviewer_email || 'unknown',
       rating: r.rating,
       comment: r.comment,
       reply: r.reply,

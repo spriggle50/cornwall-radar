@@ -2,16 +2,21 @@
 // OWN review). Reading reviews is public and lives in routes/directory.js
 // instead (no auth needed to browse them, same as the listings
 // themselves); replying to one as the business owner lives in
-// routes/business.js. This file is only the "I signed in, I want to leave
-// or change my own review" half.
+// routes/business.js. This file covers two ways to leave one:
 //
-// Sign-in is required on purpose (routes are behind requireAuth below) —
-// unlike the listings themselves, which anyone can browse without an
-// account. A free-text "leave a review as anyone" form is trivially spammed
-// or used by a competitor to leave bad-faith reviews with no trace; tying a
-// review to a real consumer_id (one row per business+consumer, enforced by
-// schema.sql's unique constraint) makes both far more friction to abuse,
-// without needing a full moderation queue.
+// 1. Signed in (PUT/DELETE /:businessId below, behind requireAuth) — tied
+//    to a real consumer_id, one row per business+consumer.
+// 2. No account at all (POST /public/:businessId above requireAuth) — like
+//    a Google/Yell review link a business can send straight to a customer
+//    or put on their own website. Only an email address is asked for (not
+//    shown publicly, same as a signed-in reviewer's email never is — see
+//    directory.js's own comment on that), used purely so the existing
+//    admin new-review alert/remove-it-if-it's-bad flow below still works
+//    exactly the same way it already does for a listing added on someone's
+//    behalf in business.js's POST /api/admin/businesses. This is
+//    deliberately NOT a moderation queue — a review is live the instant
+//    it's posted, same as the signed-in path always has been, with removal
+//    happening after the fact if it needs to.
 const express = require('express');
 const router = express.Router();
 const { supabaseAdmin } = require('../lib/supabaseClient');
@@ -41,17 +46,23 @@ function requireAdminToken(req, res, next) {
 router.get('/admin/review/:id', requireAdminToken, async (req, res) => {
   const { data: review, error } = await supabaseAdmin
     .from('business_reviews')
-    .select('id, business_id, consumer_id, rating, comment, reply, created_at')
+    .select('id, business_id, consumer_id, reviewer_email, rating, comment, reply, created_at')
     .eq('id', req.params.id)
     .maybeSingle();
   if (error || !review) {
     return res.status(404).send('<p style="font-family: -apple-system, sans-serif;">Review not found — it may already have been removed.</p>');
   }
 
+  // consumer_id is null for a review left without an account (see this
+  // file's top comment) — skip the consumers lookup entirely rather than
+  // querying with a null id, and fall back to the row's own reviewer_email.
   const [{ data: business }, { data: consumer }] = await Promise.all([
     supabaseAdmin.from('businesses').select('name').eq('id', review.business_id).maybeSingle(),
-    supabaseAdmin.from('consumers').select('email').eq('id', review.consumer_id).maybeSingle(),
+    review.consumer_id
+      ? supabaseAdmin.from('consumers').select('email').eq('id', review.consumer_id).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
+  const reviewerEmail = (consumer && consumer.email) || review.reviewer_email || 'unknown';
 
   const removeUrl = `/api/reviews/admin/remove/${encodeURIComponent(review.id)}?token=${encodeURIComponent(req.query.token)}`;
   res.send(`
@@ -60,7 +71,7 @@ router.get('/admin/review/:id', requireAdminToken, async (req, res) => {
       <p style="color:#5b6b6a; margin-top:0;">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</p>
       ${review.comment ? `<p>${escHtml(review.comment)}</p>` : '<p><em>No written comment.</em></p>'}
       ${review.reply ? `<p><strong>Business's reply:</strong> ${escHtml(review.reply)}</p>` : ''}
-      <p><strong>Reviewer's login email:</strong> ${escHtml(consumer ? consumer.email : 'unknown')}</p>
+      <p><strong>Reviewer's email:</strong> ${escHtml(reviewerEmail)}</p>
       <form method="POST" action="${removeUrl}" onsubmit="return confirm('Remove this review? This can\\'t be undone.');">
         <button type="submit" style="background:#c0392b; color:#fff; border:none; padding:10px 20px; border-radius:6px; font-size:1em; cursor:pointer;">Remove this review</button>
       </form>
@@ -75,6 +86,121 @@ router.post('/admin/remove/:id', requireAdminToken, async (req, res) => {
     res.send('<p style="font-family: -apple-system, sans-serif;">Review removed.</p>');
   } catch (err) {
     res.status(500).send('<p style="font-family: -apple-system, sans-serif;">Could not remove review: ' + escHtml(err.message || 'unknown error') + '</p>');
+  }
+});
+
+// Same slug logic as seoPages.js's own businessPath()/slugify() (and the
+// third copy of it in public/index.html's copyBusinessLink feature) — kept
+// in sync by hand since none of these three files can share code with each
+// other. Purely cosmetic: the redirect below only needs it to land back on
+// a tidy-looking URL, the actual page lookup is by id alone.
+function slugifyBusinessName(text) {
+  return String(text || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'listing';
+}
+function businessPagePath(business) {
+  return `/directory/business/${business.id}/${slugifyBusinessName(business.name)}`;
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// POST /api/reviews/public/:businessId — leave a review with no account at
+// all, just an email address. A plain HTML <form method="POST"> on the
+// business's own page in seoPages.js posts here directly (that page is
+// deliberately JS-free, same as its other forms), so this reads a
+// form-urlencoded body rather than JSON, and responds with a redirect back
+// to that page rather than a JSON body. consumer_id stays null on the
+// inserted row — reviewer_email is how this one's identified instead (see
+// this file's top comment, and the migration note in business_reviews for
+// the schema side of this).
+router.post('/public/:businessId', express.urlencoded({ extended: false }), async (req, res) => {
+  const { data: business, error: bizErr } = await supabaseAdmin
+    .from('businesses')
+    .select('id, name')
+    .eq('id', req.params.businessId)
+    .maybeSingle();
+  if (bizErr || !business) {
+    return res.status(404).send('<p style="font-family: -apple-system, sans-serif;">That business could not be found.</p>');
+  }
+
+  const backToBusiness = (query) => res.redirect(303, businessPagePath(business) + query);
+
+  const ratingNum = Number((req.body || {}).rating);
+  const email = String((req.body || {}).email || '').trim().toLowerCase();
+  const comment = String((req.body || {}).comment || '').trim();
+
+  if (!Number.isInteger(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+    return backToBusiness('?reviewError=' + encodeURIComponent('Pick a star rating from 1 to 5.'));
+  }
+  if (!EMAIL_RE.test(email)) {
+    return backToBusiness('?reviewError=' + encodeURIComponent('Enter a valid email address.'));
+  }
+
+  try {
+    // One row per business+email for the anonymous path (mirrors the
+    // signed-in path's one row per business+consumer) — resubmitting with
+    // the same email edits that row instead of adding a second one, same
+    // "save always replaces" shape as everywhere else in this project.
+    // Matched by hand (select then update/insert) rather than .upsert()'s
+    // onConflict, which targets a plain unique constraint — this dedup is
+    // a partial unique INDEX (only applies when consumer_id is null, so it
+    // never collides with the signed-in path's own constraint), and
+    // PostgREST's upsert can't be pointed at a partial index's predicate.
+    const { data: existing } = await supabaseAdmin
+      .from('business_reviews')
+      .select('id')
+      .eq('business_id', business.id)
+      .is('consumer_id', null)
+      .eq('reviewer_email', email)
+      .maybeSingle();
+
+    let reviewId;
+    if (existing) {
+      const { data, error } = await supabaseAdmin
+        .from('business_reviews')
+        .update({ rating: ratingNum, comment: comment || null, updated_at: new Date().toISOString() })
+        .eq('id', existing.id)
+        .select('id')
+        .single();
+      if (error) throw new Error(error.message);
+      reviewId = data.id;
+    } else {
+      const { data, error } = await supabaseAdmin
+        .from('business_reviews')
+        .insert({ business_id: business.id, consumer_id: null, reviewer_email: email, rating: ratingNum, comment: comment || null })
+        .select('id')
+        .single();
+      if (error) throw new Error(error.message);
+      reviewId = data.id;
+
+      // Only on a genuinely new review, not an edit — same rule the
+      // signed-in path below already follows, and the same alert/remove-
+      // it email Ady already gets for one of those.
+      if (ADMIN_ALERT_EMAIL && ADMIN_ACTION_TOKEN && emailConfigured()) {
+        const reviewUrl = `${APP_BASE_URL}/api/reviews/admin/review/${reviewId}?token=${encodeURIComponent(ADMIN_ACTION_TOKEN)}`;
+        sendEmail({
+          to: ADMIN_ALERT_EMAIL,
+          subject: `New review on ${business.name}`,
+          html: `
+            <div style="font-family: -apple-system, sans-serif; color:#12181a;">
+              <p>A new review just went live on Cornwall Radar (left without an account, via the business's own page link):</p>
+              <p><strong>${escHtml(business.name)}</strong> — ${'★'.repeat(ratingNum)}${'☆'.repeat(5 - ratingNum)}</p>
+              ${comment ? `<p>${escHtml(comment)}</p>` : ''}
+              <p><strong>Reviewer's email:</strong> ${escHtml(email)}</p>
+              <p><a href="${reviewUrl}">Review it, and remove if needed →</a></p>
+            </div>
+          `,
+        }).catch((e) => console.error('[reviews] new-review alert email failed:', e.message));
+      }
+    }
+
+    return backToBusiness('?reviewed=1');
+  } catch (err) {
+    console.error('[reviews] public review submission failed:', err.message);
+    return backToBusiness('?reviewError=' + encodeURIComponent('Something went wrong saving your review — please try again.'));
   }
 });
 

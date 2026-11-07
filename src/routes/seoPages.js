@@ -135,6 +135,20 @@ ${jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script
   footer.site-footer a { color:var(--text-3); }
   .breadcrumbs { font-size:0.8rem; color:var(--text-3); margin-bottom:14px; }
   .breadcrumbs a { color:var(--text-3); }
+  .review-form { background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px 18px; margin:10px 0 20px; }
+  .review-form label { display:block; font-weight:600; font-size:0.85rem; margin:12px 0 4px; }
+  .review-form label:first-child { margin-top:0; }
+  .review-form select, .review-form input[type="email"], .review-form textarea {
+    width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px;
+    font-size:0.92rem; font-family:inherit; box-sizing:border-box; background:#fff; color:var(--text);
+  }
+  .review-form textarea { resize:vertical; min-height:70px; }
+  .review-form button { margin-top:14px; background:var(--accent); color:#fff; border:none; border-radius:8px; padding:9px 18px; font-weight:700; cursor:pointer; font-size:0.92rem; }
+  .review-form button:hover { background:var(--accent-dark); }
+  .review-form .hint { font-size:0.78rem; color:var(--text-3); margin:3px 0 0; }
+  .flash-note { border-radius:8px; padding:10px 14px; margin:0 0 14px; font-size:0.9rem; }
+  .flash-success { background:#e3f6ec; color:#07734f; border:1px solid #bfe8d3; }
+  .flash-error { background:#fdeceb; color:#a33; border:1px solid #f5c6c2; }
 </style>
 </head>
 <body>
@@ -422,6 +436,45 @@ router.get('/directory/business/:id/:slug?', async (req, res) => {
     const featuredTag = b.subscription_status === 'active' ? '<span class="featured-tag">★ Featured</span>' : '';
     const logo = b.logo_url ? `<img class="biz-logo" src="${escHtml(b.logo_url)}" alt="${escHtml(b.name)} logo" />` : '';
 
+    // ?reviewed=1 / ?reviewError=... — set by reviews.js's POST
+    // /api/reviews/public/:businessId redirecting back here (this page has
+    // no JS, so a plain form-post-then-redirect is how it shows the
+    // result, same pattern as the admin review-removal page in
+    // reviews.js). Neither ever needs HTML-escaping: reviewed is a fixed
+    // '1', and every reviewError string reviews.js sends is one of its own
+    // fixed messages, never anything from the request.
+    const flash = req.query.reviewed
+      ? '<p class="flash-note flash-success">Thanks — your review is live.</p>'
+      : req.query.reviewError
+        ? `<p class="flash-note flash-error">${escHtml(req.query.reviewError)}</p>`
+        : '';
+
+    // No account needed — just an email, kept private and used only so
+    // Ady can be alerted and remove it if it's a bad-faith one, same as
+    // any other listing or review on this site. A business can send this
+    // page's link straight to a customer, or put it on their own site, the
+    // same way a Google/Yell review link works.
+    const reviewForm = `
+      <h2>Leave a review</h2>
+      ${flash}
+      <form class="review-form" method="POST" action="/api/reviews/public/${b.id}">
+        <label for="reviewRating">Rating</label>
+        <select name="rating" id="reviewRating" required>
+          <option value="">Choose a rating…</option>
+          <option value="5">★★★★★ Excellent</option>
+          <option value="4">★★★★☆ Good</option>
+          <option value="3">★★★☆☆ Average</option>
+          <option value="2">★★☆☆☆ Poor</option>
+          <option value="1">★☆☆☆☆ Terrible</option>
+        </select>
+        <label for="reviewEmail">Your email</label>
+        <input type="email" name="email" id="reviewEmail" required placeholder="you@example.com" />
+        <p class="hint">Never shown publicly — only used so we can remove this review if it needs removing.</p>
+        <label for="reviewComment">Your review (optional)</label>
+        <textarea name="comment" id="reviewComment" placeholder="What was your experience like?"></textarea>
+        <button type="submit">Post review</button>
+      </form>`;
+
     const body = `
       <div class="breadcrumbs"><a href="/directory">Cornwall Business Directory</a> › <a href="${categoryPath(b.category)}">${escHtml(b.category)}</a> › ${escHtml(b.name)}</div>
       <div class="biz-header">
@@ -437,6 +490,7 @@ router.get('/directory/business/:id/:slug?', async (req, res) => {
       <div class="btn-line">
         <a href="${categoryPath(b.category)}">← More ${escHtml(b.category)} businesses in Cornwall</a>
       </div>
+      ${reviewForm}
       ${LIST_BUSINESS_CTA}`;
 
     const jsonLd = {
