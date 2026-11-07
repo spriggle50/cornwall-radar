@@ -1956,8 +1956,29 @@
               + '</div>';
           }).join('')
         : '<p class="account-note">No reviews yet — be the first!</p>';
+      // Signed in: tied to the account, one row per business+consumer,
+      // edit/remove supported (submitReview/removeMyReview, PUT/DELETE
+      // /api/reviews/:businessId). Not signed in: same no-account path as
+      // the shareable business-page link (seoPages.js) — just a name +
+      // email, posted as JSON to the same POST /api/reviews/public/:id
+      // route that page's plain form also hits (submitPublicReview
+      // below). Either way the email is never shown publicly, only used
+      // for Ady's moderation alert.
       const myForm = !cache.isSignedIn
-        ? '<p class="account-note">Sign in to leave a review.</p>'
+        ? (
+          '<div class="review-form">'
+          + '<label>Leave a review</label>'
+          + '<input type="text" id="reviewName-' + businessId + '" maxlength="80" placeholder="Your name (shown with your review)" style="width:100%; margin-bottom:6px;" />'
+          + '<select id="reviewRating-' + businessId + '">'
+          + [5, 4, 3, 2, 1].map((n) => '<option value="' + n + '"' + (n === 5 ? ' selected' : '') + '>' + '★'.repeat(n) + '☆'.repeat(5 - n) + '</option>').join('')
+          + '</select>'
+          + '<input type="email" id="reviewEmail-' + businessId + '" placeholder="Your email (not shown publicly)" style="width:100%; margin:6px 0;" />'
+          + '<p class="hint" style="font-size:0.78rem; color:var(--text-3); margin:0 0 6px;">Only used so we can remove this review if it needs removing.</p>'
+          + '<textarea id="reviewComment-' + businessId + '" placeholder="Optional comment" rows="2"></textarea>'
+          + '<button class="btn-primary" onclick="submitPublicReview(\'' + businessId + '\')">Post review</button>'
+          + '<div id="reviewStatusMsg-' + businessId + '"></div>'
+          + '</div>'
+        )
         : (
           '<div class="review-form">'
           + '<label>' + (myReview ? 'Update your review' : 'Leave a review') + '</label>'
@@ -2004,6 +2025,42 @@
       } catch (err) {
         const status = document.getElementById('reviewStatusMsg-' + businessId);
         if (status) status.innerHTML = '<p class="account-error">' + err.message + '</p>';
+      }
+    }
+
+    // No-account review path — same POST /api/reviews/public/:businessId
+    // route the shareable business-page link (seoPages.js) posts a plain
+    // form to, just called here as a JSON fetch instead since this panel
+    // is already JS-driven. Server-side validation (rating/name/email) is
+    // the real guard; these just avoid a round trip for an empty field.
+    async function submitPublicReview(businessId) {
+      const name = document.getElementById('reviewName-' + businessId).value.trim();
+      const rating = parseInt(document.getElementById('reviewRating-' + businessId).value, 10);
+      const email = document.getElementById('reviewEmail-' + businessId).value.trim();
+      const comment = document.getElementById('reviewComment-' + businessId).value.trim();
+      const status = document.getElementById('reviewStatusMsg-' + businessId);
+      if (!name) {
+        status.innerHTML = '<p class="account-error">Enter your name.</p>';
+        return;
+      }
+      if (!email) {
+        status.innerHTML = '<p class="account-error">Enter your email.</p>';
+        return;
+      }
+      status.innerHTML = '<p class="account-note">Saving…</p>';
+      try {
+        const res = await fetch('/api/reviews/public/' + businessId, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, rating, email, comment }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not save your review');
+        status.innerHTML = '<p class="account-note">Thanks — your review is live.</p>';
+        await loadReviewsFor(businessId, true);
+        renderDirectoryDetail();
+      } catch (err) {
+        status.innerHTML = '<p class="account-error">' + err.message + '</p>';
       }
     }
 

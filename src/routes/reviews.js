@@ -117,17 +117,29 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // inserted row — reviewer_email is how this one's identified instead (see
 // this file's top comment, and the migration note in business_reviews for
 // the schema side of this).
-router.post('/public/:businessId', express.urlencoded({ extended: false }), async (req, res) => {
+// Accepts both a plain HTML form post (seoPages.js's JS-free business
+// page) and a JSON fetch (the review panel embedded in the main
+// site/directory in index.html, used by signed-in AND signed-out
+// visitors) — same route, same validation and dedupe-by-email behaviour
+// either way, just a different response shape (redirect-with-flash vs a
+// JSON body) so each caller gets back what it can actually use.
+router.post('/public/:businessId', express.json(), express.urlencoded({ extended: false }), async (req, res) => {
+  const wantsJson = req.is('application/json');
+
   const { data: business, error: bizErr } = await supabaseAdmin
     .from('businesses')
     .select('id, name')
     .eq('id', req.params.businessId)
     .maybeSingle();
   if (bizErr || !business) {
+    if (wantsJson) return res.status(404).json({ error: 'That business could not be found.' });
     return res.status(404).send('<p style="font-family: -apple-system, sans-serif;">That business could not be found.</p>');
   }
 
   const backToBusiness = (query) => res.redirect(303, businessPagePath(business) + query);
+  const fail = (status, message) => wantsJson
+    ? res.status(status).json({ error: message })
+    : backToBusiness('?reviewError=' + encodeURIComponent(message));
 
   const ratingNum = Number((req.body || {}).rating);
   const name = String((req.body || {}).name || '').trim();
@@ -135,16 +147,16 @@ router.post('/public/:businessId', express.urlencoded({ extended: false }), asyn
   const comment = String((req.body || {}).comment || '').trim();
 
   if (!Number.isInteger(ratingNum) || ratingNum < 1 || ratingNum > 5) {
-    return backToBusiness('?reviewError=' + encodeURIComponent('Pick a star rating from 1 to 5.'));
+    return fail(400, 'Pick a star rating from 1 to 5.');
   }
   // A name is required and shown publicly next to the review (like a
   // Google/Yell reviewer's name) — the email never is (see this file's top
   // comment); it's only ever used for the admin alert/removal flow below.
   if (!name || name.length > 80) {
-    return backToBusiness('?reviewError=' + encodeURIComponent('Enter your name (up to 80 characters).'));
+    return fail(400, 'Enter your name (up to 80 characters).');
   }
   if (!EMAIL_RE.test(email)) {
-    return backToBusiness('?reviewError=' + encodeURIComponent('Enter a valid email address.'));
+    return fail(400, 'Enter a valid email address.');
   }
 
   try {
@@ -205,10 +217,11 @@ router.post('/public/:businessId', express.urlencoded({ extended: false }), asyn
       }
     }
 
+    if (wantsJson) return res.json({ ok: true, reviewId });
     return backToBusiness('?reviewed=1');
   } catch (err) {
     console.error('[reviews] public review submission failed:', err.message);
-    return backToBusiness('?reviewError=' + encodeURIComponent('Something went wrong saving your review — please try again.'));
+    return fail(500, 'Something went wrong saving your review — please try again.');
   }
 });
 
