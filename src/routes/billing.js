@@ -12,9 +12,12 @@ const router = express.Router();
 const { stripe } = require('../lib/stripeClient');
 const { supabaseAdmin, isConfigured: supabaseConfigured } = require('../lib/supabaseClient');
 const { requireAuth } = require('../middleware/requireAuth');
+const { sendEmail, isConfigured: emailConfigured } = require('../lib/emailClient');
 
 const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID;
 const APP_BASE_URL = process.env.APP_BASE_URL || 'http://localhost:3000';
+const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL;
+const escHtml = (v) => String(v == null ? '' : v).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
 
 function requireStripeConfigured(req, res, next) {
   if (!stripe || !STRIPE_PRICE_ID) {
@@ -155,6 +158,29 @@ async function webhookHandler(req, res) {
             .from(isBusiness ? 'businesses' : 'consumers')
             .update({ stripe_customer_id: session.customer, subscription_status: 'active' })
             .eq('id', accountId);
+
+          // Ady asked to be told when a business upgrades to Featured —
+          // nothing to moderate/remove here like a new listing or review,
+          // just a heads-up, so no one-click action link, same
+          // ADMIN_ALERT_EMAIL as everywhere else. Fire-and-forget: a slow
+          // or misconfigured mailbox should never delay/fail the webhook.
+          if (isBusiness && ADMIN_ALERT_EMAIL && emailConfigured()) {
+            const { data: business } = await supabaseAdmin
+              .from('businesses')
+              .select('name')
+              .eq('id', accountId)
+              .maybeSingle();
+            const businessName = business ? business.name : 'A business';
+            sendEmail({
+              to: ADMIN_ALERT_EMAIL,
+              subject: `New Featured subscriber: ${businessName}`,
+              html: `
+                <div style="font-family: -apple-system, sans-serif; color:#12181a;">
+                  <p><strong>${escHtml(businessName)}</strong> just upgraded to a Featured listing (£4.99/month) on Cornwall Radar.</p>
+                </div>
+              `,
+            }).catch((e) => console.error('[billing] featured-signup alert email failed:', e.message));
+          }
         }
         break;
       }
