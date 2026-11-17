@@ -962,6 +962,13 @@
         if (!c || !c.items || !c.items.length) return 'No council news right now';
         return c.items[0].title;
       }
+      if (key === 'flights') {
+        const fl = d.flights;
+        if (!fl || fl.unavailable) return 'Unavailable right now';
+        const upNext = (fl.departures || []).find(x => !x.date) || (fl.departures || [])[0];
+        if (!upNext) return 'Newquay Airport (NQY)';
+        return 'Next departure: ' + (upNext.scheduledTime || '?') + ' to ' + (upNext.place || '?');
+      }
       if (key === 'trains') {
         const t = d.trains;
         if (!t || t.unavailable) return 'Unavailable right now';
@@ -1013,6 +1020,7 @@
       { key: 'news', icon: '📰', title: 'Cornwall News', photo: '/images/community.jpg' },
       { key: 'sport', icon: '⚽', title: 'Cornwall Sport', dynamicPhoto: (d) => d.sport?.items?.[0]?.image || null },
       { key: 'councilNews', icon: '🏛️', title: 'Cornwall Council News', photo: '/images/council-news.jpg' },
+      { key: 'flights', icon: '✈️', title: 'Flights', photo: '/images/flights.jpg' },
       { key: 'trains', icon: '🚆', title: 'Train Times', photo: '/images/trains.jpg' },
       { key: 'stormOverflows', icon: '💧', title: 'Storm Overflows', photo: '/images/storm-overflow.jpg' },
       { key: 'floodMonitoring', icon: '🌧️', title: 'River & Sea Levels', photo: '/images/river-levels.jpg' },
@@ -1068,6 +1076,7 @@
         events: renderEventsDetail,
         sport: renderSportDetail,
         councilNews: renderCouncilNewsDetail,
+        flights: renderFlightsDetail,
         trains: renderTrainsDetail,
         stormOverflows: renderStormOverflowsDetail,
         floodMonitoring: renderFloodMonitoringDetail,
@@ -1648,6 +1657,55 @@
         return '<span class="train-status delayed">Exp ' + s.expected + (s.delayReason ? ' — ' + s.delayReason : '') + '</span>';
       }
       return '<span class="train-status on-time">On time</span>';
+    }
+
+    function shortFlightDate(d) {
+      if (!d) return null;
+      // "19 November 2026" -> "19 Nov"
+      const m = d.match(/^(\d{1,2})\s+([A-Za-z]+)/);
+      return m ? (m[1] + ' ' + m[2].slice(0, 3)) : d;
+    }
+
+    function flightStatusMarkup(f) {
+      const slug = (f.statusSlug || '').toLowerCase();
+      const label = f.statusText || 'Scheduled';
+      if (slug === 'cancelled') {
+        return '<span class="train-status cancelled">' + label + '</span>';
+      }
+      if (slug === 'delayed') {
+        return '<span class="train-status delayed">' + label + (f.expectedTime && f.expectedTime !== f.scheduledTime ? ' — exp ' + f.expectedTime : '') + '</span>';
+      }
+      return '<span class="train-status on-time">' + label + '</span>';
+    }
+
+    function flightRowsMarkup(list, directionWord) {
+      if (!list || !list.length) return '<p class="unavailable">No ' + directionWord + ' flights listed right now</p>';
+      return list.map(f => {
+        const dateTag = shortFlightDate(f.date);
+        return '<div class="train-row">'
+          + '<div><span class="train-time">' + (f.scheduledTime || '--:--') + '</span> '
+          + '<span class="train-dest">' + (directionWord === 'arriving' ? 'from ' : 'to ') + (f.place || 'Unknown') + '</span>'
+          + '<div class="train-meta">' + (f.flightNumber ? f.flightNumber + ' · ' : '') + (f.airline || '') + (dateTag ? ' · ' + dateTag : '') + '</div>'
+          + '</div>'
+          + flightStatusMarkup(f)
+          + '</div>';
+      }).join('');
+    }
+
+    function renderFlightsDetail(fl) {
+      const title = '✈️ Flights — Cornwall Airport Newquay';
+      const state = unavailableState(title, fl);
+      if (state) return state;
+
+      const banner = '<img class="card-banner" src="/images/flights.jpg" alt="" />';
+      const subtitle = '<p class="section-subtitle">Newquay (NQY) · scheduled departures &amp; arrivals</p>';
+
+      return '<div class="card">' + banner + '<h2>' + title + '</h2>' + subtitle
+        + '<h3 class="subhead">Departures</h3>'
+        + flightRowsMarkup((fl.departures || []).slice(0, 12), 'departing')
+        + '<h3 class="subhead">Arrivals</h3>'
+        + flightRowsMarkup((fl.arrivals || []).slice(0, 12), 'arriving')
+        + '</div>';
     }
 
     function renderTrainsDetail(t) {

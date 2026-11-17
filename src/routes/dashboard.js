@@ -18,6 +18,7 @@ const { getStormOverflows } = require('../fetchers/stormOverflows');
 const { getFloodAndRiverLevels } = require('../fetchers/floodMonitoring');
 const { getBathingWaterQuality } = require('../fetchers/bathingWater');
 const { getWeatherWarnings } = require('../fetchers/weatherWarnings');
+const { getFlights } = require('../fetchers/flights');
 const { getOrFetch, TTL_MS } = require('../lib/dashboardCache');
 
 // Same default as weather.js — Truro, Cornwall — used whenever no location
@@ -42,7 +43,7 @@ router.get('/', async (req, res) => {
   const effectiveLon = lon != null ? lon : DEFAULT_LON;
 
   const buildDashboard = async () => {
-    const [weather, weatherWarnings, wildlife, news, traffic, buses, tides, pollen, weatherDetail, whatson, events, sport, councilNews, trains, stormOverflows, floodMonitoring, bathingWater] = await Promise.allSettled([
+    const [weather, weatherWarnings, wildlife, news, traffic, buses, tides, pollen, weatherDetail, whatson, events, sport, councilNews, trains, stormOverflows, floodMonitoring, bathingWater, flights] = await Promise.allSettled([
       getWeather(lat, lon),
       getWeatherWarnings(),
       getRecentSightings(),
@@ -60,6 +61,7 @@ router.get('/', async (req, res) => {
       getStormOverflows(),
       getFloodAndRiverLevels({ lat: effectiveLat, lon: effectiveLon }),
       getBathingWaterQuality(),
+      getFlights(),
     ]);
 
     // On failure, the full error (including any upstream response body — a
@@ -92,6 +94,7 @@ router.get('/', async (req, res) => {
       stormOverflows: unwrap(stormOverflows, 'stormOverflows'),
       floodMonitoring: unwrap(floodMonitoring, 'floodMonitoring'),
       bathingWater: unwrap(bathingWater, 'bathingWater'),
+      flights: unwrap(flights, 'flights'),
       generatedAt: new Date().toISOString(),
     };
   };
