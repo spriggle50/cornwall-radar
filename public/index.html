@@ -1667,13 +1667,25 @@
     }
 
     function flightStatusMarkup(f) {
+      // Detection is layered rather than trusting one signal, because the
+      // airport's live page has only ever been observed showing On time /
+      // Departed / Landed flights — there's no confirmed real example of
+      // its "Delayed" or "Cancelled" CSS class name to check parsing
+      // against. The time comparison (expected vs scheduled) is the most
+      // reliable signal since it's a direct data check, not a guessed
+      // class/text pattern — same approach already used for the Trains
+      // card — so it's checked first and backs up the text/slug checks.
+      const text = (f.statusText || '').toLowerCase();
       const slug = (f.statusSlug || '').toLowerCase();
       const label = f.statusText || 'Scheduled';
-      if (slug === 'cancelled') {
+      const timeSlipped = !!(f.expectedTime && f.scheduledTime && f.expectedTime !== f.scheduledTime);
+      const isCancelled = slug === 'cancelled' || text.includes('cancel');
+      const isDelayed = !isCancelled && (slug === 'delayed' || text.includes('delay') || timeSlipped);
+      if (isCancelled) {
         return '<span class="train-status cancelled">' + label + '</span>';
       }
-      if (slug === 'delayed') {
-        return '<span class="train-status delayed">' + label + (f.expectedTime && f.expectedTime !== f.scheduledTime ? ' — exp ' + f.expectedTime : '') + '</span>';
+      if (isDelayed) {
+        return '<span class="train-status delayed">' + label + (timeSlipped ? ' — exp ' + f.expectedTime : '') + '</span>';
       }
       return '<span class="train-status on-time">' + label + '</span>';
     }
