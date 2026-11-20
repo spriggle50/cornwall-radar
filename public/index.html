@@ -460,6 +460,10 @@
       letter-spacing: 0.04em; padding: 3px 9px; border-radius: 999px; background: #fff2cc; color: #9a6b00;
       white-space: nowrap; flex-shrink: 0;
     }
+    .directory-rating-badge {
+      font-size: 0.8rem; font-weight: 700; color: #9a6b00; white-space: nowrap; flex-shrink: 0;
+    }
+    .directory-row-badges { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
     .job-source-badge {
       display: inline-block; font-size: 0.62rem; font-weight: 800; text-transform: uppercase;
       letter-spacing: 0.03em; padding: 2px 8px; border-radius: 999px; white-space: nowrap; margin-left: 6px;
@@ -2151,12 +2155,12 @@
       const distLine = b.distanceKm != null ? b.distanceKm + 'km away' : null;
       const meta = [distLine, phoneLine, siteLine].filter(Boolean).join(' · ');
       const logo = b.logo_url ? '<img src="' + b.logo_url + '" alt="" class="directory-row-logo" />' : '';
-      const ratingText = b.reviewCount
-        ? '★ ' + b.avgRating + ' (' + b.reviewCount + (b.reviewCount === 1 ? ' review' : ' reviews') + ')'
-        : 'No reviews yet';
+      const ratingBadge = b.reviewCount
+        ? '<span class="directory-rating-badge">★ ' + b.avgRating + ' (' + b.reviewCount + ')</span>'
+        : '';
       const isExpanded = expandedReviewsFor === b.id;
       const ratingLine = '<p class="directory-row-meta"><a href="#" class="review-toggle-link" onclick="event.preventDefault(); toggleReviews(\'' + b.id + '\');">'
-        + ratingText + (isExpanded ? ' · Hide' : ' · Show') + '</a></p>';
+        + (b.reviewCount ? (isExpanded ? 'Hide reviews' : 'Show reviews') : (isExpanded ? 'Hide' : 'No reviews yet · be the first')) + '</a></p>';
       const voucherBlock = b.hasVoucher
         ? '<p class="directory-row-meta" style="color: var(--accent-dark); font-weight:600;">🎟️ ' + b.voucherTitle
           + (b.voucherExpiresAt ? ' — ends ' + formatVoucherDate(b.voucherExpiresAt) : '') + '</p>'
@@ -2172,7 +2176,7 @@
         + '<div style="display:flex; align-items:center; gap:10px;">' + logo
         + '<div><div class="directory-row-name">' + b.name + '</div>'
         + '<div class="directory-row-category">' + b.category + (b.secondary_category ? ' + ' + b.secondary_category : '') + (b.postcode ? ' · ' + b.postcode : '') + '</div></div></div>'
-        + (b.featured ? '<span class="featured-badge">★ Featured</span>' : '')
+        + ((ratingBadge || b.featured) ? '<div class="directory-row-badges">' + ratingBadge + (b.featured ? '<span class="featured-badge">★ Featured</span>' : '') + '</div>' : '')
         + '</div>'
         + (b.description ? '<p class="directory-row-desc">' + b.description + '</p>' : '')
         + voucherBlock
