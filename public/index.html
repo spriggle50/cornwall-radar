@@ -3539,10 +3539,11 @@
             const date = new Date(b.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
             // Edit form starts hidden (toggleAdminEditBusiness) and is
             // pre-filled from the same data the row already shows — no
-            // second fetch needed. Deliberately name/category/phone/
-            // website/email/postcode only, same fields business.js's own
-            // PUT /businesses/:id accepts — description/logo/voucher/
-            // vacancies stay owner-only, edited from their own account panel.
+            // second fetch needed. name/category/phone/website/email/
+            // postcode/description/voucher/logo are all editable here,
+            // same fields admin.js's own PUT /businesses/:id (and the logo
+            // POST below) accept — only vacancies stay owner-only, edited
+            // from the business's own account panel.
             const editForm = '<div id="adminBizEdit-' + b.id + '" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">'
               + '<div class="account-field"><label>Business name</label><input type="text" id="adminBizName-' + b.id + '" value="' + esc(b.name) + '" /></div>'
               + '<div class="account-field"><label>Category</label><select id="adminBizCategory-' + b.id + '">'
@@ -3553,6 +3554,7 @@
               + businessCategories.map((c) => '<option value="' + esc(c) + '"' + (b.secondary_category === c ? ' selected' : '') + '>' + c + '</option>').join('')
               + '</select></div>'
               + '<div class="account-field"><label>Postcode or town</label><input type="text" id="adminBizPostcode-' + b.id + '" value="' + esc(b.postcode) + '" /></div>'
+              + '<div class="account-field"><label>Description (optional)</label><input type="text" id="adminBizDescription-' + b.id + '" value="' + esc(b.description) + '" placeholder="What they do, in a sentence" /></div>'
               + '<div class="account-field"><label>Phone</label><input type="text" id="adminBizPhone-' + b.id + '" value="' + esc(b.phone) + '" /></div>'
               + '<div class="account-field"><label>Website</label><input type="text" id="adminBizWebsite-' + b.id + '" value="' + esc(b.website) + '" placeholder="yourbusiness.co.uk" /></div>'
               + '<div class="account-field"><label>Logo (optional)</label>'
@@ -3688,6 +3690,7 @@
         category: document.getElementById('adminBizCategory-' + id).value,
         secondaryCategory: document.getElementById('adminBizSecondaryCategory-' + id).value,
         postcode: document.getElementById('adminBizPostcode-' + id).value.trim(),
+        description: document.getElementById('adminBizDescription-' + id).value.trim(),
         phone: document.getElementById('adminBizPhone-' + id).value.trim(),
         website: document.getElementById('adminBizWebsite-' + id).value.trim(),
         email: document.getElementById('adminBizEmail-' + id).value.trim(),

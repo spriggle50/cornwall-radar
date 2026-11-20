@@ -79,7 +79,7 @@ router.get('/businesses', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('businesses')
-      .select('id, name, category, secondary_category, postcode, town, email, phone, website, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at, created_at')
+      .select('id, name, category, secondary_category, description, postcode, town, email, phone, website, logo_url, subscription_status, voucher_title, voucher_description, voucher_expires_at, created_at')
       .order('created_at', { ascending: false });
     if (error) throw new Error(error.message);
     res.json({ businesses: data || [] });
@@ -207,18 +207,19 @@ router.post('/businesses', async (req, res) => {
 // details on their behalf (a mistyped website was the original case this
 // was built for) without the owner needing to sign in and do it themselves.
 // Covers name, category, secondary category, phone, website, postcode, the
-// account's contact email, and the voucher — NOT description or vacancies,
-// which stay owner-only edits via routes/business.js so a business's own
-// richer content is never silently touched by anyone but them. The voucher
-// and the logo (POST /businesses/:id/logo below) are the two exceptions:
-// added so Ady can set them for a business that has no reason to ever sign
-// in and do it themselves (see POST above) — logos in particular because
-// businesses that reply to outreach by email tend to just attach one and
-// ask for it to be added. `email` here is businesses.email — the contact
-// address shown in this admin list — NOT the owner's actual Supabase Auth
-// sign-in, which can't be (and doesn't need to be) changed from here.
+// account's contact email, the description and the voucher — NOT
+// vacancies, which stay an owner-only edit via routes/business.js (there's
+// no single "vacancy" field to patch here, and a business emailing in a
+// job post is rare enough not to need this shortcut). Description, the
+// voucher, and the logo (POST /businesses/:id/logo below) are all here for
+// the same reason: so Ady can set them for a business that has no reason
+// to ever sign in and do it themselves (see POST above), or that emails in
+// a changed description/logo instead of logging in to update it. `email`
+// here is businesses.email — the contact address shown in this admin list
+// — NOT the owner's actual Supabase Auth sign-in, which can't be (and
+// doesn't need to be) changed from here.
 router.put('/businesses/:id', async (req, res) => {
-  const { name, category, secondaryCategory, phone, website, email, postcode, voucherTitle, voucherDescription, voucherExpiresAt } = req.body || {};
+  const { name, category, secondaryCategory, phone, website, email, postcode, description, voucherTitle, voucherDescription, voucherExpiresAt } = req.body || {};
   if (!name || !name.trim() || !postcode || !postcode.trim()) {
     return res.status(400).json({ error: 'A business name and postcode/town are both required' });
   }
@@ -254,6 +255,7 @@ router.put('/businesses/:id', async (req, res) => {
         name: name.trim(),
         category: category.trim(),
         secondary_category: cleanSecondaryCategory,
+        description: (description || '').trim() || null,
         phone: (phone || '').trim() || null,
         website: normalizeWebsiteUrl(website),
         email: email.trim(),
@@ -266,7 +268,7 @@ router.put('/businesses/:id', async (req, res) => {
         voucher_expires_at: voucherFields.voucher_expires_at,
       })
       .eq('id', req.params.id)
-      .select('id, name, category, secondary_category, postcode, town, email, phone, website, subscription_status, voucher_title, voucher_description, voucher_expires_at, created_at')
+      .select('id, name, category, secondary_category, description, postcode, town, email, phone, website, subscription_status, voucher_title, voucher_description, voucher_expires_at, created_at')
       .single();
     if (error) throw new Error(error.message);
     res.json(data);
