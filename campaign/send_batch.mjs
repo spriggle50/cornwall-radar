@@ -14,6 +14,17 @@
 // GROUP_ORDER below, one group at a time, moving to the next group only
 // once the current one has no pending rows left. Edit GROUP_ORDER to
 // change which category gets emailed first.
+//
+// Send window: the Railway cron trigger itself still fires round the
+// clock (e.g. every 30 minutes, 24/7) — that's a schedule set in Railway's
+// dashboard, not in this repo, so this script can't change how often it's
+// invoked. Instead it polices WHEN it's willing to actually send: outside
+// SEND_WINDOW_START_HOUR..SEND_WINDOW_END_HOUR (local time in SEND_TIMEZONE)
+// it logs that it's outside the window and exits without sending anything,
+// so recipients only ever receive outreach during the day rather than at
+// 3am. Defaults to 8am-8pm Europe/London, every day of the week. A manual
+// test send (--test-to) always bypasses this, since that's a deliberate
+// one-off check, not a real outreach send.
 
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
@@ -51,6 +62,31 @@ const LIMIT = parseInt(getArg("limit", "1"), 10);
 // real content (real business name, real category copy) without emailing
 // an actual lead or using up one of their one-shot sends.
 const TEST_TO = getArg("test-to", null);
+
+// See "Send window" note above. Hours are inclusive of the start hour and
+// exclusive of the end hour, e.g. the 8-20 default sends from 08:00:00 up
+// to (but not including) 20:00:00 local time.
+const SEND_WINDOW_START_HOUR = parseInt(process.env.SEND_WINDOW_START_HOUR || "8", 10);
+const SEND_WINDOW_END_HOUR = parseInt(process.env.SEND_WINDOW_END_HOUR || "20", 10);
+const SEND_TIMEZONE = process.env.SEND_TIMEZONE || "Europe/London";
+
+// Current hour (0-23) in SEND_TIMEZONE, computed via Intl so it tracks BST
+// vs GMT automatically rather than needing a fixed UTC offset.
+function currentHourIn(timeZone) {
+  const hourString = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    hour12: false,
+  }).format(new Date());
+  // "24" shows up for midnight in some environments' en-GB formatting —
+  // treat it the same as hour 0.
+  return parseInt(hourString, 10) % 24;
+}
+
+function withinSendWindow() {
+  const hour = currentHourIn(SEND_TIMEZONE);
+  return hour >= SEND_WINDOW_START_HOUR && hour < SEND_WINDOW_END_HOUR;
+}
 
 const GROUP_ORDER = [
   "Food & Drink",
@@ -149,6 +185,13 @@ async function nextGroupWithPending() {
 }
 
 async function main() {
+  if (!TEST_TO && !withinSendWindow()) {
+    console.log(
+      `Outside the send window (${SEND_WINDOW_START_HOUR}:00-${SEND_WINDOW_END_HOUR}:00 ${SEND_TIMEZONE}, currently hour ${currentHourIn(SEND_TIMEZONE)}). Skipping this run.`
+    );
+    return;
+  }
+
   const group = await nextGroupWithPending();
   if (!group) {
     console.log("No pending leads left in any group. Nothing to send.");
